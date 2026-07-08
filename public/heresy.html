@@ -1051,6 +1051,8 @@
                     border-radius: 10px;
                     min-height: 142px;
                     scroll-snap-align: start;
+                    display: flex;
+                    flex-direction: column;
                 }
 
                 .summary-card .card-label {
@@ -1061,6 +1063,10 @@
                 .summary-card .card-metric {
                     font-size: 13px;
                     margin-bottom: 2px;
+                }
+
+                .summary-card .card-metric:first-of-type {
+                    margin-top: auto;
                 }
 
                 .summary-card .card-metric .metric-label {
@@ -2889,6 +2895,12 @@
                 const mainVisibleCols = mainColMenu
                     ? Array.from(mainColMenu.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.getAttribute('data-column'))
                     : getDefaultVisibleColumns();
+                const mobileCols = isMobileViewport()
+                    ? [...mainVisibleCols]
+                    : (mainTableColumnProfiles.mobile ? [...mainTableColumnProfiles.mobile] : [...mobileDefaultDynCols]);
+                const desktopCols = isMobileViewport()
+                    ? (mainTableColumnProfiles.desktop ? [...mainTableColumnProfiles.desktop] : [...defaultDynCols])
+                    : [...mainVisibleCols];
                 return {
                     sectionOrder,
                     sectionNames,
@@ -2900,7 +2912,9 @@
                     mainTableConfig: {
                         status: document.getElementById('mainStatus') ? document.getElementById('mainStatus').value : 'open',
                         category: document.getElementById('mainCategory') ? document.getElementById('mainCategory').value : 'all',
-                        visibleColumns: mainVisibleCols
+                        visibleColumns: mainVisibleCols,
+                        mobileVisibleColumns: mobileCols,
+                        desktopVisibleColumns: desktopCols
                     },
                     collapsedSections: Array.from(document.querySelectorAll('.collapsible-section.collapsed')).map(el => el.id).filter(Boolean)
                 };
@@ -2968,13 +2982,14 @@
                     if (ss && mc.status) ss.value = mc.status;
                     const cs = document.getElementById('mainCategory');
                     if (cs && mc.category) cs.value = mc.category;
-                    if (mc.visibleColumns) {
-                        const menu = document.getElementById('dynColMenu_main');
-                        if (menu) {
-                            menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                                cb.checked = mc.visibleColumns.includes(cb.getAttribute('data-column'));
-                            });
-                        }
+                    mainTableColumnProfiles.mobile = Array.isArray(mc.mobileVisibleColumns) ? [...mc.mobileVisibleColumns] : null;
+                    mainTableColumnProfiles.desktop = Array.isArray(mc.desktopVisibleColumns) ? [...mc.desktopVisibleColumns] : null;
+                    const chosenColumns = isMobileViewport()
+                        ? (mainTableColumnProfiles.mobile || getDefaultVisibleColumns())
+                        : (mainTableColumnProfiles.desktop || mc.visibleColumns || getDefaultVisibleColumns());
+                    const menu = document.getElementById('dynColMenu_main');
+                    if (menu) {
+                        setMenuCheckedColumns(menu, chosenColumns);
                     }
                 }
                 // Backward compat: old format with statusFilter/selectedCategories
@@ -3212,6 +3227,7 @@
             const allColumns = ['Entry Date','Trade','Symbol','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
             const defaultDynCols = ['Entry Date','Trade','Category','Qty','Entry','Current','Profit','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
             const mobileDefaultDynCols = ['Symbol','Basis','Value','Gain','Day'];
+            let mainTableColumnProfiles = { mobile: null, desktop: null };
 
             function isMobileViewport() {
                 return window.matchMedia('(max-width: 768px)').matches;
@@ -4455,16 +4471,6 @@
                 // Load saved state before initializing
                 const savedState = await loadState();
 
-                // Mobile-first defaults for table columns (without clobbering curated narrow views).
-                if (isMobileViewport()) {
-                    const savedCols = savedState && savedState.display && savedState.display.mainTableConfig
-                        ? savedState.display.mainTableConfig.visibleColumns
-                        : null;
-                    if (!Array.isArray(savedCols) || savedCols.length > 8) {
-                        setMenuCheckedColumns(document.getElementById('dynColMenu_main'), getDefaultVisibleColumns());
-                    }
-                }
-
                 if (savedState && savedState.trades && Array.isArray(savedState.trades) && savedState.trades.length > 0
                     && savedState.dataVersion === DATA_VERSION) {
                     tradesData.length = 0;
@@ -4534,6 +4540,8 @@
                     addDynamicChart({ period: '6M', filter: 'all' });
                     sectionNames[`dynPanel_${dynamicIdCounter - 1}`] = 'Historical Performance';
                 }
+
+                generateTable();
 
                 // Export / Import handlers
                 document.getElementById('exportBtn').addEventListener('click', exportJSON);
