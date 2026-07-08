@@ -51,6 +51,29 @@
             </div>
         </div>
         <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                background: #f2f4f7;
+                color: #1f2933;
+            }
+
+            .container {
+                max-width: 1120px;
+                margin: 0 auto;
+                padding: 14px;
+            }
+
+            #sectionsContainer,
+            .draggable-section,
+            .dynamic-panel,
+            .summary-section {
+                width: 100%;
+            }
+
             table.trade-table {
                 border-collapse: collapse;
                 font-family: 'Courier New', Courier, monospace;
@@ -480,16 +503,16 @@
                 font-size: 16px;
             }
             .summary-cards {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 14px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 12px;
             }
             .summary-card {
                 background: white;
                 border: 1px solid #ccc;
                 border-radius: 8px;
-                padding: 14px 20px;
-                min-width: 200px;
+                padding: 12px 14px;
+                min-width: 0;
                 font-family: 'Courier New', Courier, monospace;
                 position: relative;
                 box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -857,6 +880,147 @@
                 font-size: 11px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
+            }
+
+            /* Mobile refinement pass */
+            @media (max-width: 768px) {
+                body {
+                    background: #eef1f4;
+                }
+
+                .container {
+                    padding: 10px 8px 26px;
+                }
+
+                .header-section {
+                    margin-bottom: 14px !important;
+                }
+
+                .header-section > div:last-child {
+                    justify-content: flex-start !important;
+                    gap: 8px !important;
+                }
+
+                .header-section > div:last-child > button,
+                .header-section > div:last-child > label,
+                .header-section > div:last-child > #refreshGroup {
+                    flex: 1 1 calc(50% - 4px);
+                    max-width: none;
+                    margin: 0 !important;
+                }
+
+                .header-section > div:last-child > button,
+                .header-section > div:last-child > label {
+                    min-height: 38px;
+                    display: inline-flex !important;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0 10px !important;
+                }
+
+                #refreshGroup {
+                    display: inline-flex !important;
+                }
+
+                #refreshBtn {
+                    width: 100% !important;
+                    margin-top: 0 !important;
+                    padding: 0 10px !important;
+                }
+
+                #settingsBtn {
+                    flex: 0 0 44px !important;
+                    max-width: 44px;
+                    padding: 0 !important;
+                }
+
+                #lastRefresh {
+                    text-align: left !important;
+                    font-size: 11px !important;
+                }
+
+                .summary-cards {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 10px;
+                }
+
+                .summary-card {
+                    padding: 10px;
+                    border-radius: 10px;
+                }
+
+                .summary-card .card-label {
+                    font-size: 12px;
+                    margin-bottom: 8px;
+                }
+
+                .summary-card .card-metric {
+                    font-size: 13px;
+                    margin-bottom: 2px;
+                }
+
+                .summary-card .card-metric .metric-label {
+                    margin-right: 8px;
+                }
+
+                .summary-card .card-metric .metric-value {
+                    font-size: 13px;
+                }
+
+                .inline-stats {
+                    display: none;
+                }
+
+                .dynamic-panel {
+                    margin-top: 12px;
+                }
+
+                .dynamic-panel .panel-bar {
+                    padding: 8px 10px;
+                    gap: 6px;
+                }
+
+                .dynamic-panel .panel-bar select,
+                .dynamic-panel .panel-bar button {
+                    font-size: 12px;
+                    padding: 5px 8px;
+                }
+
+                .dynamic-panel .panel-content {
+                    padding: 8px;
+                }
+
+                .dynamic-panel .panel-content .chart-container {
+                    height: 250px;
+                }
+
+                .add-element-row {
+                    gap: 6px;
+                    flex-wrap: wrap;
+                }
+
+                .add-element-btn {
+                    flex: 1 1 130px;
+                    min-height: 36px;
+                }
+            }
+
+            @media (max-width: 520px) {
+                .summary-cards {
+                    grid-template-columns: 1fr;
+                }
+
+                .header-section > div:last-child > button,
+                .header-section > div:last-child > label,
+                .header-section > div:last-child > #refreshGroup {
+                    flex: 1 1 100%;
+                }
+
+                #settingsBtn {
+                    flex: 1 1 100% !important;
+                    max-width: none;
+                    min-height: 38px;
+                }
             }
             .trade-modal .option-fields { display: none; }
             .trade-modal .option-fields.show { display: contents; }
