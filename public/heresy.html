@@ -901,6 +901,20 @@
                     gap: 8px !important;
                 }
 
+                #autoRefreshCheckbox {
+                    grid-column: 1 / 2;
+                    justify-self: end;
+                    margin: 0 !important;
+                }
+
+                label[for="autoRefreshCheckbox"] {
+                    grid-column: 2 / 3;
+                    justify-self: start;
+                    margin: 0 !important;
+                    font-size: 13px !important;
+                    white-space: nowrap;
+                }
+
                 .header-section > div:last-child > button,
                 .header-section > div:last-child > label,
                 .header-section > div:last-child > #refreshGroup {
@@ -940,13 +954,21 @@
                 }
 
                 .summary-cards {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    display: flex;
+                    flex-wrap: nowrap;
                     gap: 10px;
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                    scroll-snap-type: x mandatory;
+                    padding-bottom: 4px;
                 }
 
                 .summary-card {
+                    flex: 0 0 82%;
+                    max-width: 82%;
                     padding: 10px;
                     border-radius: 10px;
+                    scroll-snap-align: start;
                 }
 
                 .summary-card .card-label {
@@ -978,6 +1000,42 @@
                 .dynamic-panel .panel-bar {
                     padding: 8px 10px;
                     gap: 6px;
+                    align-items: center;
+                }
+
+                .dynamic-panel .panel-bar .section-title {
+                    font-size: 15px;
+                    flex: 1 1 auto;
+                    margin-right: auto;
+                }
+
+                .dynamic-panel .panel-bar .toggle-icon {
+                    margin-right: 2px;
+                }
+
+                .dynamic-panel .panel-bar .remove-panel {
+                    margin-left: auto;
+                }
+
+                .dynamic-panel .panel-bar label,
+                .dynamic-panel .panel-bar .panel-col-dropdown,
+                .dynamic-panel .panel-bar > button:not(.remove-panel) {
+                    flex: 1 1 calc(50% - 6px);
+                }
+
+                .dynamic-panel .panel-bar label {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 6px;
+                }
+
+                .dynamic-panel .panel-bar label select {
+                    width: 100%;
+                }
+
+                .dynamic-panel .panel-bar .panel-col-dropdown > button {
+                    width: 100%;
                 }
 
                 .dynamic-panel .panel-bar select,
@@ -1006,8 +1064,9 @@
             }
 
             @media (max-width: 520px) {
-                .summary-cards {
-                    grid-template-columns: 1fr;
+                .summary-card {
+                    flex-basis: 88%;
+                    max-width: 88%;
                 }
 
                 .header-section > div:last-child > button,
@@ -1020,6 +1079,12 @@
                     flex: 1 1 100% !important;
                     max-width: none;
                     min-height: 38px;
+                }
+
+                .dynamic-panel .panel-bar label,
+                .dynamic-panel .panel-bar .panel-col-dropdown,
+                .dynamic-panel .panel-bar > button:not(.remove-panel) {
+                    flex: 1 1 100%;
                 }
             }
             .trade-modal .option-fields { display: none; }
