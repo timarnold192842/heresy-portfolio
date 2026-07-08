@@ -38,7 +38,7 @@
                 <button id="settingsBtn" onclick="openSettingsModal()" title="API Settings" style="padding: 8px 12px; font-family: 'Courier New', Courier, monospace; font-size: 14px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     &#9881;
                 </button>
-                <button onclick="showAddTradeModal()" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                <button id="addTradeBtn" onclick="showAddTradeModal()" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     + Add Trade
                 </button>
                 <button id="exportBtn" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
@@ -48,6 +48,15 @@
                     Import JSON
                     <input type="file" id="importFile" accept=".json" style="display: none;">
                 </label>
+                <div class="mobile-menu-wrap">
+                    <button id="mobileMenuToggle" class="mobile-menu-btn" type="button" title="More actions">&#9776;</button>
+                    <div id="mobileMenuPanel" class="mobile-menu-panel">
+                        <button type="button" data-action="addTrade">+ Add Trade</button>
+                        <button type="button" data-action="export">Export JSON</button>
+                        <button type="button" data-action="import">Import JSON</button>
+                        <button type="button" data-action="settings">API Settings</button>
+                    </div>
+                </div>
             </div>
         </div>
         <style>
@@ -65,6 +74,62 @@
                 max-width: 1120px;
                 margin: 0 auto;
                 padding: 14px;
+            }
+
+            .mobile-menu-wrap {
+                display: none;
+                position: relative;
+            }
+
+            .mobile-menu-btn {
+                border: 1px solid #9aa5b1;
+                background: #fff;
+                color: #334e68;
+                border-radius: 6px;
+                font-size: 18px;
+                line-height: 1;
+                width: 38px;
+                height: 38px;
+                cursor: pointer;
+            }
+
+            .mobile-menu-panel {
+                display: none;
+                position: absolute;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 120;
+                min-width: 170px;
+                background: #fff;
+                border: 1px solid #d3dce6;
+                border-radius: 8px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+                overflow: hidden;
+            }
+
+            .mobile-menu-panel.show {
+                display: block;
+            }
+
+            .mobile-menu-panel button {
+                width: 100%;
+                border: none;
+                border-bottom: 1px solid #eef2f6;
+                background: #fff;
+                color: #334e68;
+                text-align: left;
+                padding: 9px 11px;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 12px;
+                cursor: pointer;
+            }
+
+            .mobile-menu-panel button:last-child {
+                border-bottom: none;
+            }
+
+            .mobile-menu-panel button:hover {
+                background: #f3f7fb;
             }
 
             #sectionsContainer,
@@ -513,6 +578,7 @@
                 border-radius: 8px;
                 padding: 12px 14px;
                 min-width: 0;
+                min-height: 124px;
                 font-family: 'Courier New', Courier, monospace;
                 position: relative;
                 box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -897,39 +963,49 @@
                 }
 
                 .header-section > div:last-child {
+                    display: grid !important;
+                    grid-template-columns: auto auto 1fr auto;
+                    align-items: center !important;
                     justify-content: flex-start !important;
                     gap: 8px !important;
                 }
 
                 #autoRefreshCheckbox {
-                    grid-column: 1 / 2;
-                    justify-self: end;
+                    grid-column: 2 / 3;
+                    justify-self: center;
                     margin: 0 !important;
+                    width: 18px;
+                    height: 18px;
+                    accent-color: #007acc;
                 }
 
                 label[for="autoRefreshCheckbox"] {
-                    grid-column: 2 / 3;
+                    grid-column: 3 / 4;
                     justify-self: start;
                     margin: 0 !important;
                     font-size: 13px !important;
                     white-space: nowrap;
                 }
 
+                #refreshGroup {
+                    grid-column: 1 / 2;
+                }
+
+                .mobile-menu-wrap {
+                    display: block;
+                    grid-column: 4 / 5;
+                }
+
                 .header-section > div:last-child > button,
                 .header-section > div:last-child > label,
                 .header-section > div:last-child > #refreshGroup {
-                    flex: 1 1 calc(50% - 4px);
                     max-width: none;
                     margin: 0 !important;
                 }
 
                 .header-section > div:last-child > button,
                 .header-section > div:last-child > label {
-                    min-height: 38px;
-                    display: inline-flex !important;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 0 10px !important;
+                    min-height: 0;
                 }
 
                 #refreshGroup {
@@ -943,12 +1019,17 @@
                 }
 
                 #settingsBtn {
-                    flex: 0 0 44px !important;
-                    max-width: 44px;
-                    padding: 0 !important;
+                    display: none !important;
+                }
+
+                #addTradeBtn,
+                #exportBtn,
+                #importLabel {
+                    display: none !important;
                 }
 
                 #lastRefresh {
+                    grid-column: 1 / -1;
                     text-align: left !important;
                     font-size: 11px !important;
                 }
@@ -968,6 +1049,7 @@
                     max-width: 82%;
                     padding: 10px;
                     border-radius: 10px;
+                    min-height: 142px;
                     scroll-snap-align: start;
                 }
 
@@ -1076,9 +1158,7 @@
                 }
 
                 #settingsBtn {
-                    flex: 1 1 100% !important;
-                    max-width: none;
-                    min-height: 38px;
+                    display: none !important;
                 }
 
                 .dynamic-panel .panel-bar label,
@@ -1183,6 +1263,7 @@
                     <div class="panel-col-menu" id="dynColMenu_main">
                         <label><input type="checkbox" data-column="Entry Date" checked onchange="generateTable()">Entry Date</label>
                         <label><input type="checkbox" data-column="Trade" checked onchange="generateTable()">Trade</label>
+                        <label><input type="checkbox" data-column="Symbol" onchange="generateTable()">Symbol</label>
                         <label><input type="checkbox" data-column="Category" checked onchange="generateTable()">Category</label>
                         <label><input type="checkbox" data-column="Account" onchange="generateTable()">Account</label>
                         <label><input type="checkbox" data-column="Qty" checked onchange="generateTable()">Qty</label>
@@ -2796,8 +2877,9 @@
             function resetColumnsToDefault(id, renderFn) {
                 const menu = document.getElementById(`dynColMenu_${id}`);
                 if (!menu) return;
+                const defaults = getDefaultVisibleColumns();
                 menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                    cb.checked = defaultDynCols.includes(cb.getAttribute('data-column'));
+                    cb.checked = defaults.includes(cb.getAttribute('data-column'));
                 });
                 if (renderFn) renderFn();
             }
@@ -2806,7 +2888,7 @@
                 const mainColMenu = document.getElementById('dynColMenu_main');
                 const mainVisibleCols = mainColMenu
                     ? Array.from(mainColMenu.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.getAttribute('data-column'))
-                    : [...defaultDynCols];
+                    : getDefaultVisibleColumns();
                 return {
                     sectionOrder,
                     sectionNames,
@@ -3127,15 +3209,32 @@
 
             // ===== Dynamic Table/Chart Elements =====
             let dynamicIdCounter = 1;
-            const allColumns = ['Entry Date','Trade','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
+            const allColumns = ['Entry Date','Trade','Symbol','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
             const defaultDynCols = ['Entry Date','Trade','Category','Qty','Entry','Current','Profit','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
+            const mobileDefaultDynCols = ['Symbol','Basis','Value','Gain','Day'];
+
+            function isMobileViewport() {
+                return window.matchMedia('(max-width: 768px)').matches;
+            }
+
+            function getDefaultVisibleColumns() {
+                return isMobileViewport() ? [...mobileDefaultDynCols] : [...defaultDynCols];
+            }
+
+            function setMenuCheckedColumns(menuEl, cols) {
+                if (!menuEl) return;
+                const wanted = new Set(cols);
+                menuEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.checked = wanted.has(cb.getAttribute('data-column'));
+                });
+            }
 
             function addDynamicTable(config, numId) {
                 const id = numId != null ? numId : dynamicIdCounter++;
                 if (id >= dynamicIdCounter) dynamicIdCounter = id + 1;
                 const panelId = `dynPanel_${id}`;
-                const cfg = config || { status: 'open', category: 'all', visibleColumns: [...defaultDynCols] };
-                if (!cfg.visibleColumns) cfg.visibleColumns = [...defaultDynCols];
+                const cfg = config || { status: 'open', category: 'all', visibleColumns: getDefaultVisibleColumns() };
+                if (!cfg.visibleColumns) cfg.visibleColumns = getDefaultVisibleColumns();
                 dynamicPanelConfigs[panelId] = { type: 'table', ...cfg };
                 if (!sectionOrder.includes(panelId)) sectionOrder.push(panelId);
                 if (!sectionNames[panelId]) sectionNames[panelId] = `Table ${id}`;
@@ -3772,6 +3871,7 @@
                 return `<tr class="${dataState}" data-market-key='${mk2}' data-trade-idx='${tradeIdx}'>
                             <td data-col='Entry Date' data-sort='${entryDate.getTime()}'${hide('Entry Date')}>${formatDate(trade.entry_date)}</td>
                             <td data-col='Trade' data-sort='${getTradeDisplay(trade)}'${hide('Trade')}>${getTradeDisplay(trade)}</td>
+                            <td data-col='Symbol' data-sort='${trade.ticker}'${hide('Symbol')}>${trade.ticker}</td>
                             <td data-col='Category' data-sort='${trade.category}'${hide('Category')}><span class="category-pill ${catCls}">${trade.category}</span></td>
                             <td data-col='Account' data-sort='${trade.account||"Unknown"}'${hide('Account')}>${trade.account||'Unknown'}</td>
                             <td data-col='Qty' data-sort='${trade.quantity}'${hide('Qty')}>${trade.quantity}</td>
@@ -4150,6 +4250,23 @@
                 const refreshTime = document.getElementById('refreshTime');
                 const refreshMenuBtn = document.getElementById('refreshMenuBtn');
                 const refreshMenu = document.getElementById('refreshMenu');
+                const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+                const mobileMenuPanel = document.getElementById('mobileMenuPanel');
+
+                function closeMobileMenu() {
+                    if (mobileMenuPanel) mobileMenuPanel.classList.remove('show');
+                }
+
+                function handleMobileAction(action) {
+                    if (action === 'addTrade') showAddTradeModal();
+                    else if (action === 'export') exportJSON();
+                    else if (action === 'import') {
+                        const f = document.getElementById('importFile');
+                        if (f) f.click();
+                    }
+                    else if (action === 'settings') openSettingsModal();
+                    closeMobileMenu();
+                }
 
                 function closeRefreshMenu() {
                     if (refreshMenu) refreshMenu.style.display = 'none';
@@ -4164,13 +4281,15 @@
                 const autoRefreshCheckbox = document.createElement('input');
                 autoRefreshCheckbox.type = 'checkbox';
                 autoRefreshCheckbox.id = 'autoRefreshCheckbox';
-                autoRefreshCheckbox.style.marginLeft = '10px';
+                autoRefreshCheckbox.style.margin = '0';
                 
                 const autoRefreshLabel = document.createElement('label');
                 autoRefreshLabel.htmlFor = 'autoRefreshCheckbox';
-                autoRefreshLabel.textContent = ' Auto-refresh (5s)';
-                autoRefreshLabel.style.marginLeft = '5px';
+                autoRefreshLabel.textContent = 'Auto-refresh (5s)';
+                autoRefreshLabel.style.marginLeft = '6px';
                 autoRefreshLabel.style.fontSize = '14px';
+                autoRefreshLabel.style.display = 'inline-flex';
+                autoRefreshLabel.style.alignItems = 'center';
                 
                 // Insert checkbox after the whole refresh button group (so the caret
                 // stays flush against the main button).
@@ -4335,6 +4454,17 @@
 
                 // Load saved state before initializing
                 const savedState = await loadState();
+
+                // Mobile-first defaults for table columns (without clobbering curated narrow views).
+                if (isMobileViewport()) {
+                    const savedCols = savedState && savedState.display && savedState.display.mainTableConfig
+                        ? savedState.display.mainTableConfig.visibleColumns
+                        : null;
+                    if (!Array.isArray(savedCols) || savedCols.length > 8) {
+                        setMenuCheckedColumns(document.getElementById('dynColMenu_main'), getDefaultVisibleColumns());
+                    }
+                }
+
                 if (savedState && savedState.trades && Array.isArray(savedState.trades) && savedState.trades.length > 0
                     && savedState.dataVersion === DATA_VERSION) {
                     tradesData.length = 0;
@@ -4358,6 +4488,23 @@
                 document.addEventListener('click', (e) => {
                     if (e.target.closest('.panel-col-menu') || e.target.closest('.panel-col-dropdown button')) return;
                     document.querySelectorAll('.panel-col-menu.show').forEach(m => m.classList.remove('show'));
+                });
+
+                if (mobileMenuToggle) {
+                    mobileMenuToggle.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (mobileMenuPanel) mobileMenuPanel.classList.toggle('show');
+                    });
+                }
+                if (mobileMenuPanel) {
+                    mobileMenuPanel.querySelectorAll('button[data-action]').forEach(btn => {
+                        btn.addEventListener('click', () => handleMobileAction(btn.getAttribute('data-action')));
+                    });
+                }
+                document.addEventListener('click', (e) => {
+                    if (!mobileMenuPanel || !mobileMenuToggle) return;
+                    if (mobileMenuPanel.contains(e.target) || mobileMenuToggle.contains(e.target)) return;
+                    closeMobileMenu();
                 });
 
                 // Apply saved display config after DOM is ready
