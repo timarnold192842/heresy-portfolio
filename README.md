@@ -78,3 +78,31 @@ git push -u origin main
 
 - `public/heresy.html` and `public/heresy-trades.js` are copied from your existing workspace version.
 - Existing import/export JSON still works.
+
+## Basic password gate
+
+The site includes a lightweight client-side password gate:
+
+- First visit prompts for a password.
+- On successful entry, access is remembered in browser local storage.
+- Access remains until browser storage is cleared or you call `heresyLogout()` in the browser console.
+
+Important: this is deterrence-level protection only, not strong security. A determined user can inspect front-end code.
+
+### Change the password
+
+1. Generate a SHA-256 hash for your new password:
+
+```bash
+node -e "const c=require('crypto'); const s='YOUR_NEW_PASSWORD'; console.log(c.createHash('sha256').update(s).digest('hex'));"
+```
+
+2. Replace `ACCESS_PASSWORD_SHA256` in [public/heresy.html](public/heresy.html).
+
+3. Commit and push to redeploy:
+
+```bash
+git add public/heresy.html README.md
+git commit -m "Update portfolio access password"
+git push
+```

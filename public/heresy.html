@@ -3820,11 +3820,103 @@
                 rows.forEach(row => tbody.appendChild(row));
             }
 
+            // ===== Access Gate (basic client-side password) =====
+            const ACCESS_FLAG_KEY = 'heresy_access_granted';
+            const ACCESS_PASSWORD_SHA256 = 'c777d8bf19fc4ec1eb98c9b454d75f813c538f6c723001072426102cc1b1a482';
+
+            async function sha256Hex(text) {
+                const encoder = new TextEncoder();
+                const bytes = encoder.encode(text);
+                const digest = await crypto.subtle.digest('SHA-256', bytes);
+                return Array.from(new Uint8Array(digest))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+            }
+
+            function hasAccess() {
+                try {
+                    return localStorage.getItem(ACCESS_FLAG_KEY) === '1';
+                } catch (_err) {
+                    return false;
+                }
+            }
+
+            function grantAccess() {
+                try {
+                    localStorage.setItem(ACCESS_FLAG_KEY, '1');
+                } catch (_err) {
+                    // If storage is unavailable we still allow this session.
+                }
+            }
+
+            function revokeAccess() {
+                try {
+                    localStorage.removeItem(ACCESS_FLAG_KEY);
+                } catch (_err) {
+                    // Ignore storage errors.
+                }
+            }
+
+            function showAccessGate() {
+                const overlay = document.createElement('div');
+                overlay.id = 'accessOverlay';
+                overlay.style.position = 'fixed';
+                overlay.style.inset = '0';
+                overlay.style.background = 'rgba(10, 12, 20, 0.88)';
+                overlay.style.display = 'flex';
+                overlay.style.alignItems = 'center';
+                overlay.style.justifyContent = 'center';
+                overlay.style.zIndex = '99999';
+                overlay.innerHTML = `
+                    <div style="width: min(92vw, 420px); background: #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); padding: 24px; font-family: 'Courier New', Courier, monospace;">
+                        <h2 style="margin: 0 0 10px 0; font-size: 20px;">Portfolio Access</h2>
+                        <p style="margin: 0 0 14px 0; font-size: 12px; color: #555; line-height: 1.5;">Enter password to unlock this dashboard on this browser.</p>
+                        <form id="accessForm" autocomplete="off">
+                            <input id="accessPassword" type="password" placeholder="Password" style="width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;" />
+                            <div id="accessError" style="display: none; margin-top: 10px; color: #b00020; font-size: 12px;">Incorrect password.</div>
+                            <button type="submit" style="margin-top: 14px; width: 100%; padding: 10px 12px; font-size: 13px; border: none; border-radius: 6px; background: #007acc; color: #fff; cursor: pointer;">Unlock</button>
+                        </form>
+                    </div>
+                `;
+
+                document.body.appendChild(overlay);
+
+                const form = document.getElementById('accessForm');
+                const pwd = document.getElementById('accessPassword');
+                const err = document.getElementById('accessError');
+                if (pwd) pwd.focus();
+
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const entered = (pwd.value || '').trim();
+                    const enteredHash = await sha256Hex(entered);
+                    if (enteredHash === ACCESS_PASSWORD_SHA256) {
+                        grantAccess();
+                        overlay.remove();
+                        window.location.reload();
+                        return;
+                    }
+                    err.style.display = 'block';
+                    pwd.select();
+                });
+            }
+
+            // Helper available in browser console to force re-auth.
+            window.heresyLogout = function() {
+                revokeAccess();
+                window.location.reload();
+            };
+
 
             
 
             // Main application logic
             (async function() {
+                if (!hasAccess()) {
+                    showAccessGate();
+                    return;
+                }
+
                 const refreshBtn = document.getElementById('refreshBtn');
                 const refreshTime = document.getElementById('refreshTime');
                 const refreshMenuBtn = document.getElementById('refreshMenuBtn');
