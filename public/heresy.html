@@ -582,6 +582,8 @@
                 font-family: 'Courier New', Courier, monospace;
                 position: relative;
                 box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+                display: flex;
+                flex-direction: column;
             }
             .summary-card .card-label {
                 font-size: 13px;
@@ -591,6 +593,12 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+            }
+            .summary-card .card-metrics {
+                margin-top: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
             }
             .summary-card .card-label .remove-card {
                 background: none;
@@ -609,7 +617,7 @@
                 justify-content: space-between;
                 align-items: baseline;
                 font-size: 14px;
-                margin-bottom: 4px;
+                margin-bottom: 0;
             }
             .summary-card .card-metric .metric-label {
                 color: #777;
@@ -833,6 +841,42 @@
                 font-family: 'Courier New', Courier, monospace;
             }
             .panel-col-menu label:hover { background: #f0f0f0; }
+            .mobile-col-presets {
+                display: none;
+                margin-bottom: 6px;
+            }
+            .mobile-col-presets-toggle {
+                width: 100%;
+                padding: 4px 6px;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 10px;
+                background: #f5f5f5;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                cursor: pointer;
+                text-align: left;
+            }
+            .mobile-col-presets-menu {
+                display: none;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 4px;
+                margin-top: 5px;
+            }
+            .mobile-col-presets-menu.show {
+                display: grid;
+            }
+            .mobile-col-presets-menu button {
+                padding: 4px 6px;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 10px;
+                background: #fff;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                cursor: pointer;
+            }
+            .mobile-col-presets-menu button:hover {
+                background: #f0f0f0;
+            }
             .col-defaults-btn {
                 display: block;
                 width: 100%;
@@ -1051,8 +1095,6 @@
                     border-radius: 10px;
                     min-height: 142px;
                     scroll-snap-align: start;
-                    display: flex;
-                    flex-direction: column;
                 }
 
                 .summary-card .card-label {
@@ -1065,8 +1107,8 @@
                     margin-bottom: 2px;
                 }
 
-                .summary-card .card-metric:first-of-type {
-                    margin-top: auto;
+                .summary-card .card-metrics {
+                    gap: 6px;
                 }
 
                 .summary-card .card-metric .metric-label {
@@ -1109,6 +1151,10 @@
                 .dynamic-panel .panel-bar .panel-col-dropdown,
                 .dynamic-panel .panel-bar > button:not(.remove-panel) {
                     flex: 1 1 calc(50% - 6px);
+                }
+
+                .panel-col-menu .mobile-col-presets {
+                    display: block;
                 }
 
                 .dynamic-panel .panel-bar label {
@@ -1267,6 +1313,15 @@
                 <div class="panel-col-dropdown">
                     <button onclick="togglePanelColMenu('main', event)" style="cursor:pointer;">Columns ▼</button>
                     <div class="panel-col-menu" id="dynColMenu_main">
+                        <div class="mobile-col-presets">
+                            <button class="mobile-col-presets-toggle" onclick="toggleMobileColPresetMenu('main', event)">Quick Columns ▾</button>
+                            <div class="mobile-col-presets-menu" id="mobileColPresetMenu_main">
+                                <button type="button" onclick="applyColumnPreset('main', 'mobile')">Mobile</button>
+                                <button type="button" onclick="applyColumnPreset('main', 'desktop')">Desktop</button>
+                                <button type="button" onclick="applyColumnPreset('main', 'all')">All</button>
+                                <button type="button" onclick="applyColumnPreset('main', 'default')">Default</button>
+                            </div>
+                        </div>
                         <label><input type="checkbox" data-column="Entry Date" checked onchange="generateTable()">Entry Date</label>
                         <label><input type="checkbox" data-column="Trade" checked onchange="generateTable()">Trade</label>
                         <label><input type="checkbox" data-column="Symbol" onchange="generateTable()">Symbol</label>
@@ -2880,6 +2935,31 @@
                 if (menu) menu.classList.toggle('show');
             }
 
+            function toggleMobileColPresetMenu(id, e) {
+                e.stopPropagation();
+                const menu = document.getElementById(`mobileColPresetMenu_${id}`);
+                if (menu) menu.classList.toggle('show');
+            }
+
+            function applyColumnPreset(id, preset) {
+                const menu = document.getElementById(`dynColMenu_${id}`);
+                if (!menu) return;
+
+                let cols;
+                if (preset === 'mobile') cols = [...mobileDefaultDynCols];
+                else if (preset === 'desktop') cols = [...defaultDynCols];
+                else if (preset === 'all') cols = [...allColumns];
+                else cols = getDefaultVisibleColumns();
+
+                setMenuCheckedColumns(menu, cols);
+
+                const presetMenu = document.getElementById(`mobileColPresetMenu_${id}`);
+                if (presetMenu) presetMenu.classList.remove('show');
+
+                if (id === 'main') generateTable();
+                else renderDynamicTable(id);
+            }
+
             function resetColumnsToDefault(id, renderFn) {
                 const menu = document.getElementById(`dynColMenu_${id}`);
                 if (!menu) return;
@@ -3147,13 +3227,15 @@
                             <span class="card-label-text" data-entry-id="${entry.id}">${displayName}</span>
                             <button class="remove-card" onclick="removeSummaryEntry(${entry.id})">×</button>
                         </div>
-                        <div class="card-metric">
-                            <span class="metric-label">Gain</span>
-                            <span class="metric-value ${gCls}">${gainVal}</span>
-                        </div>
-                        <div class="card-metric">
-                            <span class="metric-label">Day</span>
-                            <span class="metric-value ${dCls}">${dayVal}</span>
+                        <div class="card-metrics">
+                            <div class="card-metric">
+                                <span class="metric-label">Gain</span>
+                                <span class="metric-value ${gCls}">${gainVal}</span>
+                            </div>
+                            <div class="card-metric">
+                                <span class="metric-label">Day</span>
+                                <span class="metric-value ${dCls}">${dayVal}</span>
+                            </div>
                         </div>
                     </div>`;
                 }).join('');
@@ -3284,6 +3366,15 @@
                         <div class="panel-col-dropdown">
                             <button onclick="togglePanelColMenu(${id}, event)" style="cursor:pointer;">Columns ▼</button>
                             <div class="panel-col-menu" id="dynColMenu_${id}">
+                                <div class="mobile-col-presets">
+                                    <button class="mobile-col-presets-toggle" onclick="toggleMobileColPresetMenu(${id}, event)">Quick Columns ▾</button>
+                                    <div class="mobile-col-presets-menu" id="mobileColPresetMenu_${id}">
+                                        <button type="button" onclick="applyColumnPreset(${id}, 'mobile')">Mobile</button>
+                                        <button type="button" onclick="applyColumnPreset(${id}, 'desktop')">Desktop</button>
+                                        <button type="button" onclick="applyColumnPreset(${id}, 'all')">All</button>
+                                        <button type="button" onclick="applyColumnPreset(${id}, 'default')">Default</button>
+                                    </div>
+                                </div>
                                 ${allColumns.map(c => `<label><input type="checkbox" data-column="${c}" ${cfg.visibleColumns.includes(c)?'checked':''} onchange="renderDynamicTable(${id})">${c}</label>`).join('')}
                                 <button class="col-defaults-btn" onclick="resetColumnsToDefault(${id}, function(){ renderDynamicTable(${id}); })">Defaults</button>
                             </div>
@@ -4494,6 +4585,7 @@
                 document.addEventListener('click', (e) => {
                     if (e.target.closest('.panel-col-menu') || e.target.closest('.panel-col-dropdown button')) return;
                     document.querySelectorAll('.panel-col-menu.show').forEach(m => m.classList.remove('show'));
+                    document.querySelectorAll('.mobile-col-presets-menu.show').forEach(m => m.classList.remove('show'));
                 });
 
                 if (mobileMenuToggle) {
