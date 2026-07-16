@@ -48,6 +48,10 @@
                     Import JSON
                     <input type="file" id="importFile" accept=".json" style="display: none;">
                 </label>
+                <label id="importCsvLabel" title="Import positions/history CSVs from Schwab or Fidelity" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; display: inline-block;">
+                    Import CSV
+                    <input type="file" id="importCsvFile" accept=".csv,text/csv" multiple style="display: none;">
+                </label>
                 <div class="mobile-menu-wrap">
                     <button id="mobileMenuToggle" class="mobile-menu-btn" type="button" title="More actions">&#9776;</button>
                     <div id="mobileMenuPanel" class="mobile-menu-panel">
@@ -1352,6 +1356,40 @@
 
 
         </div><!-- end sectionsContainer -->
+
+        <!-- CSV Import Modal -->
+        <div class="trade-modal-overlay" id="csvImportOverlay" onclick="if(event.target===this)closeCsvImportModal()">
+            <div class="trade-modal" style="max-width: 900px; width: 92%; max-height: 88vh; display: flex; flex-direction: column;">
+                <h3>Import Positions &amp; History (CSV)</h3>
+                <p style="margin: 0 0 10px 0; color: #555; line-height: 1.4;">
+                    Drop or choose one or more CSVs exported from <b>Schwab</b> or <b>Fidelity</b> (Positions and/or History).
+                    Positions reconcile your current holdings; History fills in entry dates. Nothing is changed until you click <b>Apply</b>.
+                </p>
+                <div id="csvDrop" style="border: 2px dashed #bbb; border-radius: 6px; padding: 16px; text-align: center; color: #666; cursor: pointer; margin-bottom: 10px;">
+                    Drag CSV files here, or <span style="color:#17a2b8; text-decoration: underline;">click to choose</span>
+                </div>
+                <div id="csvFileList" style="margin-bottom: 10px; font-size: 12px; color: #444;"></div>
+                <div class="form-row" style="align-items: center; gap: 12px; margin-bottom: 10px;">
+                    <label>Default category for new trades:
+                        <select id="csvDefaultCategory">
+                            <option value="Asymmetric">Asymmetric</option>
+                            <option value="Resource">Resource</option>
+                        </select>
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px;" title="Keep the same ticker in different broker accounts as separate trades. The account is taken from the CSV (Schwab or Fidelity).">
+                        <input type="checkbox" id="csvMatchAccount" checked> Separate by account (from CSV)
+                    </label>
+                    <span style="color:#888; font-size:11px;">☑ = apply · ☐ = discard</span>
+                </div>
+                <div id="csvReview" style="overflow: auto; flex: 1; border-top: 1px solid #eee; padding-top: 8px;">
+                    <div style="color:#888; text-align:center; padding: 20px;">No files loaded yet.</div>
+                </div>
+                <div class="form-row" style="justify-content: flex-end; gap: 10px; margin-top: 12px;">
+                    <button onclick="closeCsvImportModal()" style="padding: 8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Cancel</button>
+                    <button id="csvApplyBtn" onclick="applyCsvImport()" disabled style="padding: 8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Apply selected</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Add Trade Modal -->
         <div class="trade-modal-overlay" id="tradeModalOverlay" onclick="if(event.target===this)closeTradeModal()">
@@ -3164,6 +3202,392 @@
                 reader.readAsText(file);
             }
 
+            // ===== CSV Import (Schwab / Fidelity) =====
+            let csvImportState = { holdings: [], transactions: [], plan: null, files: [] };
+            const CSV_MONTHS = { JAN:'01', FEB:'02', MAR:'03', APR:'04', MAY:'05', JUN:'06', JUL:'07', AUG:'08', SEP:'09', OCT:'10', NOV:'11', DEC:'12' };
+
+            function openCsvImportModal() { document.getElementById('csvImportOverlay').classList.add('show'); }
+            function closeCsvImportModal() {
+                document.getElementById('csvImportOverlay').classList.remove('show');
+                csvImportState = { holdings: [], transactions: [], plan: null, files: [] };
+                document.getElementById('csvFileList').innerHTML = '';
+                document.getElementById('csvReview').innerHTML = '<div style="color:#888; text-align:center; padding: 20px;">No files loaded yet.</div>';
+                document.getElementById('csvApplyBtn').disabled = true;
+                const inp = document.getElementById('importCsvFile'); if (inp) inp.value = '';
+            }
+
+            // RFC4180-ish CSV parser (handles quoted fields with commas/newlines).
+            function parseCsvText(text) {
+                const rows = []; let field = '', row = [], inQuotes = false;
+                for (let i = 0; i < text.length; i++) {
+                    const c = text[i];
+                    if (inQuotes) {
+                        if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQuotes = false; }
+                        else field += c;
+                    } else {
+                        if (c === '"') inQuotes = true;
+                        else if (c === ',') { row.push(field); field = ''; }
+                        else if (c === '\r') { /* skip */ }
+                        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                        else field += c;
+                    }
+                }
+                if (field.length || row.length) { row.push(field); rows.push(row); }
+                return rows;
+            }
+
+            function csvNum(s) {
+                if (s == null) return NaN;
+                const cleaned = String(s).replace(/[$,%\s]/g, '');
+                if (cleaned === '' || cleaned === '-' || cleaned === '--') return NaN;
+                return parseFloat(cleaned);
+            }
+            function csvRound2(v) { return Math.round(v * 100) / 100; }
+            function csvColIdx(cols, name) { return cols.findIndex(c => c.toLowerCase().indexOf(name.toLowerCase()) >= 0); }
+            function csvIdFields(p) {
+                const o = { type: p.type, ticker: p.ticker };
+                if (p.type === 'option') { o.strike = Number(p.strike); o.expiration = p.expiration; o.option_type = p.option_type; }
+                return o;
+            }
+            function csvIdentity(o) {
+                if (!o || !o.ticker) return null;
+                if (o.type === 'stock') return 'STK|' + o.ticker;
+                return 'OPT|' + o.ticker + '|' + o.expiration + '|' + Number(o.strike) + '|' + o.option_type;
+            }
+            function csvLabel(g) { return getTradeDisplay({ type: g.type, ticker: g.ticker, expiration: g.expiration, strike: g.strike, option_type: g.option_type }); }
+
+            // Fidelity option symbol/description parsing.
+            function parseFidelityOption(symbol, description) {
+                if (description) {
+                    const m = description.trim().toUpperCase().match(/^([A-Z.]+)\s+([A-Z]{3})\s+(\d{1,2})\s+(\d{4})\s+\$?([\d.]+)\s+(CALL|PUT)$/);
+                    if (m && CSV_MONTHS[m[2]]) {
+                        return { type: 'option', ticker: m[1], expiration: `${m[4]}-${CSV_MONTHS[m[2]]}-${m[3].padStart(2,'0')}`, strike: parseFloat(m[5]), option_type: m[6] === 'CALL' ? 'C' : 'P' };
+                    }
+                }
+                if (symbol) {
+                    const s = symbol.trim().replace(/^-/, '').toUpperCase();
+                    const m = s.match(/^([A-Z.]+)(\d{2})(\d{2})(\d{2})([CP])([\d.]+)$/);
+                    if (m) return { type: 'option', ticker: m[1], expiration: `20${m[2]}-${m[3]}-${m[4]}`, strike: parseFloat(m[6]), option_type: m[5] };
+                }
+                return null;
+            }
+
+            function parseSchwabPositions(rows) {
+                const holdings = []; let account = 'Schwab'; let cols = null;
+                for (const r of rows) {
+                    const first = (r[0] || '').trim();
+                    if (r.length <= 2 && first && first.indexOf('...') >= 0 && first.toLowerCase().indexOf('symbol') < 0) {
+                        account = first.replace(/\.\.\./g, ' ').replace(/\s+/g, ' ').trim(); continue;
+                    }
+                    if (first === 'Symbol' && r.some(x => /Asset Type/i.test(x))) { cols = r.map(x => x.trim()); continue; }
+                    if (!cols) continue;
+                    if (!first || first === 'Cash & Cash Investments' || first === 'Positions Total') continue;
+                    const assetType = (r[csvColIdx(cols, 'Asset Type')] || '').trim();
+                    if (/cash|money market/i.test(assetType)) continue;
+                    const parsed = parseTicker(first);
+                    if (!parsed) continue;
+                    const qty = csvNum(r[csvColIdx(cols, 'Qty')]);
+                    const costBasis = csvNum(r[csvColIdx(cols, 'Cost Basis')]);
+                    if (!(qty > 0)) continue;
+                    const mult = parsed.type === 'option' ? 100 : 1;
+                    const entryPrice = isFinite(costBasis) ? costBasis / (qty * mult) : NaN;
+                    holdings.push({ source: 'Schwab', account, ...csvIdFields(parsed), quantity: qty, entryPrice, costBasis });
+                }
+                return holdings;
+            }
+
+            function parseSchwabHistory(rows) {
+                const txns = []; let cols = null;
+                for (const r of rows) {
+                    if ((r[0] || '').trim() === 'Symbol' && r.some(x => /Time and Date/i.test(x))) { cols = r.map(x => x.trim()); continue; }
+                    if (!cols) continue;
+                    if ((r[csvColIdx(cols, 'Status')] || '').trim() !== 'Filled') continue;
+                    const parsed = parseTicker((r[0] || '').trim());
+                    if (!parsed) continue;
+                    const action = (r[csvColIdx(cols, 'Action')] || '').trim().toLowerCase();
+                    let kind = 'other';
+                    if (/buy to open/.test(action)) kind = 'open';
+                    else if (/sell to close/.test(action)) kind = 'close';
+                    else if (/^buy/.test(action)) kind = 'open';
+                    else if (/^sell/.test(action)) kind = 'close';
+                    const dm = (r[csvColIdx(cols, 'Time and Date')] || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                    const date = dm ? `${dm[3]}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : null;
+                    const fill = csvNum(r[csvColIdx(cols, 'Fill Price')]);
+                    const qtyField = (r[csvColIdx(cols, 'Quantity')] || '');
+                    let qty = NaN;
+                    const qm = qtyField.match(/([\d.,]+)\s*(Contract|Share)/i);
+                    if (qm) qty = csvNum(qm[1]);
+                    else if (/^\s*\$/.test(qtyField) && isFinite(fill) && fill) qty = csvNum(qtyField) / fill;
+                    txns.push({ source: 'Schwab', date, action: kind, ...csvIdFields(parsed), quantity: qty, price: fill });
+                }
+                return txns;
+            }
+
+            function parseFidelityPositions(rows) {
+                const holdings = []; let cols = null;
+                for (const r of rows) {
+                    if ((r[0] || '').trim() === 'Account number') { cols = r.map(x => x.trim()); continue; }
+                    if (!cols) continue;
+                    const account = (r[csvColIdx(cols, 'Account name')] || '').trim();
+                    const symbol = (r[csvColIdx(cols, 'Symbol')] || '').trim();
+                    const desc = (r[csvColIdx(cols, 'Description')] || '').trim();
+                    if (!symbol || /\*\*/.test(symbol) || /^USD/i.test(symbol)) continue;
+                    const qty = csvNum(r[csvColIdx(cols, 'Quantity')]);
+                    if (!(qty > 0)) continue;
+                    let parsed;
+                    if (symbol.startsWith('-') || /\bCALL\b|\bPUT\b/i.test(desc)) parsed = parseFidelityOption(symbol, desc);
+                    else parsed = parseTicker(symbol);
+                    if (!parsed) continue;
+                    const avg = csvNum(r[csvColIdx(cols, 'Average cost basis')]);
+                    const cbTotal = csvNum(r[csvColIdx(cols, 'Cost basis total')]);
+                    const mult = parsed.type === 'option' ? 100 : 1;
+                    const entryPrice = isFinite(avg) ? avg : (isFinite(cbTotal) ? cbTotal / (qty * mult) : NaN);
+                    holdings.push({ source: 'Fidelity', account, ...csvIdFields(parsed), quantity: qty, entryPrice, costBasis: isFinite(cbTotal) ? cbTotal : entryPrice * qty * mult });
+                }
+                return holdings;
+            }
+
+            function parseFidelityHistory(rows) {
+                const txns = []; let cols = null;
+                for (const r of rows) {
+                    if ((r[0] || '').trim() === 'Run Date') { cols = r.map(x => x.trim()); continue; }
+                    if (!cols) continue;
+                    const action = (r[csvColIdx(cols, 'Action')] || '').trim();
+                    let kind = null;
+                    if (/YOU BOUGHT/i.test(action)) kind = 'open';
+                    else if (/YOU SOLD/i.test(action)) kind = 'close';
+                    else continue;
+                    const symbol = (r[csvColIdx(cols, 'Symbol')] || '').trim();
+                    const desc = (r[csvColIdx(cols, 'Description')] || '').trim();
+                    if (!symbol) continue;
+                    let parsed;
+                    if (symbol.startsWith('-') || /\bCALL\b|\bPUT\b/i.test(desc)) parsed = parseFidelityOption(symbol, desc);
+                    else parsed = parseTicker(symbol);
+                    if (!parsed) continue;
+                    const dm = (r[csvColIdx(cols, 'Run Date')] || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                    const date = dm ? `${dm[3]}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : null;
+                    txns.push({ source: 'Fidelity', date, action: kind, ...csvIdFields(parsed), quantity: csvNum(r[csvColIdx(cols, 'Quantity')]), price: csvNum(r[csvColIdx(cols, 'Price')]) });
+                }
+                return txns;
+            }
+
+            function detectAndParseCsv(name, text) {
+                const rows = parseCsvText(text);
+                if (rows.some(r => (r[0] || '').trim() === 'Account number')) return { kind: 'Fidelity positions', holdings: parseFidelityPositions(rows), transactions: [] };
+                if (rows.some(r => (r[0] || '').trim() === 'Run Date')) return { kind: 'Fidelity history', holdings: [], transactions: parseFidelityHistory(rows) };
+                if (rows.some(r => (r[0] || '').trim() === 'Symbol' && r.some(x => /Time and Date/i.test(x)))) return { kind: 'Schwab history', holdings: [], transactions: parseSchwabHistory(rows) };
+                if (rows.some(r => (r[0] || '').trim() === 'Symbol' && r.some(x => /Asset Type/i.test(x)))) return { kind: 'Schwab positions', holdings: parseSchwabPositions(rows), transactions: [] };
+                return { kind: null, holdings: [], transactions: [] };
+            }
+
+            function handleCsvFiles(fileList) {
+                const files = [...fileList]; let pending = files.length;
+                if (!pending) return;
+                files.forEach(f => {
+                    const reader = new FileReader();
+                    const done = () => { if (--pending === 0) { renderCsvFileList(); buildAndRenderPlan(); } };
+                    reader.onload = e => {
+                        try {
+                            const res = detectAndParseCsv(f.name, e.target.result);
+                            csvImportState.files.push({ name: f.name, kind: res.kind, holdings: res.holdings.length, transactions: res.transactions.length });
+                            csvImportState.holdings.push(...res.holdings);
+                            csvImportState.transactions.push(...res.transactions);
+                        } catch (err) { console.error('CSV parse error', f.name, err); csvImportState.files.push({ name: f.name, kind: null, holdings: 0, transactions: 0 }); }
+                        done();
+                    };
+                    reader.onerror = done;
+                    reader.readAsText(f);
+                });
+            }
+
+            function renderCsvFileList() {
+                const el = document.getElementById('csvFileList');
+                el.innerHTML = csvImportState.files.map(f => {
+                    const ok = !!f.kind;
+                    const detail = ok ? `${f.kind} — ${f.holdings} positions, ${f.transactions} transactions` : 'Unrecognized format (skipped)';
+                    return `<div style="padding:2px 0; color:${ok ? '#2e7d32' : '#c62828'};">${ok ? '✓' : '✗'} <b>${f.name}</b> <span style="color:#666;">${detail}</span></div>`;
+                }).join('');
+            }
+
+            function csvSameAccount(a, b) {
+                const norm = s => (s || '').trim().toLowerCase();
+                return norm(a) === norm(b);
+            }
+            function csvIsUnassigned(a) { const s = (a || '').trim().toLowerCase(); return s === '' || s === 'unknown'; }
+
+            function buildCsvPlan() {
+                const separateAccounts = document.getElementById('csvMatchAccount').checked;
+                // Broker holdings grouped by identity (+ broker account, from the CSV source: Schwab/Fidelity).
+                const bmap = new Map();
+                csvImportState.holdings.forEach(h => {
+                    const idk = csvIdentity(h); if (!idk) return;
+                    const acct = h.source || h.account || '';
+                    const key = separateAccounts ? idk + '@@' + acct : idk;
+                    let g = bmap.get(key);
+                    if (!g) { g = { ...h, identity: idk, account: acct, quantity: 0, costBasis: 0, subAccounts: new Set() }; bmap.set(key, g); }
+                    const mult = h.type === 'option' ? 100 : 1;
+                    g.quantity += h.quantity || 0;
+                    g.costBasis += isFinite(h.costBasis) ? h.costBasis : ((h.entryPrice || 0) * (h.quantity || 0) * mult);
+                    if (h.account) g.subAccounts.add(h.account);
+                });
+                // Transactions for entry dates.
+                const txById = new Map();
+                csvImportState.transactions.forEach(t => { const idk = csvIdentity(t); if (!idk) return; if (!txById.has(idk)) txById.set(idk, []); txById.get(idk).push(t); });
+                // Open app trades grouped by identity -> list of lots.
+                const appByIdentity = new Map();
+                tradesData.forEach((t, idx) => {
+                    if (isTradeClosed(t)) return;
+                    const idk = csvIdentity({ type: t.type, ticker: t.ticker, strike: t.strike, expiration: t.expiration, option_type: t.option_type });
+                    if (!idk) return;
+                    if (!appByIdentity.has(idk)) appByIdentity.set(idk, []);
+                    appByIdentity.get(idk).push({ idx, account: t.account || '', quantity: t.quantity || 0, basis: getCostBasis(t) });
+                });
+
+                const usedAppIdx = new Set();
+                const actions = [];
+                bmap.forEach(g => {
+                    const mult = g.type === 'option' ? 100 : 1;
+                    const entryPrice = (g.quantity && isFinite(g.costBasis)) ? g.costBasis / (g.quantity * mult) : (g.entryPrice || 0);
+                    let entryDate = null;
+                    const txs = (txById.get(g.identity) || []).filter(t => t.action === 'open' && t.date).sort((a, b) => a.date < b.date ? -1 : 1);
+                    if (txs.length) entryDate = txs[0].date;
+                    const subAccounts = [...g.subAccounts].join(', ');
+                    const available = (appByIdentity.get(g.identity) || []).filter(l => !usedAppIdx.has(l.idx));
+                    // Match preference: same broker account, then unassigned (Unknown/blank); if not separating, any lot.
+                    let matchLots;
+                    if (!separateAccounts) matchLots = available;
+                    else {
+                        matchLots = available.filter(l => csvSameAccount(l.account, g.account));
+                        if (!matchLots.length) matchLots = available.filter(l => csvIsUnassigned(l.account));
+                    }
+                    const label = csvLabel(g);
+                    if (!matchLots.length) {
+                        actions.push({ kind: 'add', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity });
+                    } else {
+                        const appQty = matchLots.reduce((s, l) => s + l.quantity, 0);
+                        const appBasis = matchLots.reduce((s, l) => s + l.basis, 0);
+                        const appEntry = appQty ? appBasis / (appQty * mult) : 0;
+                        const appAccount = matchLots[0].account || '';
+                        matchLots.forEach(l => usedAppIdx.add(l.idx));
+                        const qtyDiff = Math.abs(appQty - g.quantity);
+                        const priceRel = entryPrice ? Math.abs(appEntry - entryPrice) / entryPrice : 0;
+                        const accountChange = separateAccounts && !csvSameAccount(appAccount, g.account);
+                        if (qtyDiff > 0.01 || priceRel > 0.01 || accountChange) {
+                            actions.push({ kind: 'update', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity, appQty, appEntry, appAccount, accountChange, singleLot: matchLots.length === 1, appIdx: matchLots[0].idx });
+                        } else {
+                            actions.push({ kind: 'ok', identity: g.identity, label, account: g.account, quantity: g.quantity });
+                        }
+                    }
+                });
+                // App open trades never matched to a broker holding.
+                appByIdentity.forEach((lots, idk) => {
+                    lots.forEach(l => {
+                        if (usedAppIdx.has(l.idx)) return;
+                        const t = tradesData[l.idx];
+                        actions.push({ kind: 'appOnly', identity: idk, label: getTradeDisplay(t), quantity: l.quantity, account: t.account || '' });
+                    });
+                });
+                return actions;
+            }
+
+            function buildAndRenderPlan() { const plan = buildCsvPlan(); csvImportState.plan = plan; renderCsvPlan(plan); }
+
+            function csvUpdateApplyBtn() {
+                const anyEnabled = document.querySelectorAll('#csvReview input.csv-apply:not(:disabled):checked').length > 0;
+                document.getElementById('csvApplyBtn').disabled = !anyEnabled;
+            }
+
+            function renderCsvPlan(plan) {
+                const el = document.getElementById('csvReview');
+                const money = v => isNaN(v) ? '—' : ('$' + Number(v).toFixed(2));
+                const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
+                if (!plan || !plan.length) {
+                    el.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">No positions parsed. Load a <b>Positions</b> CSV (Schwab or Fidelity) to reconcile holdings.</div>';
+                    document.getElementById('csvApplyBtn').disabled = true; return;
+                }
+                const adds = plan.filter(a => a.kind === 'add');
+                const updates = plan.filter(a => a.kind === 'update');
+                const oks = plan.filter(a => a.kind === 'ok');
+                const appOnly = plan.filter(a => a.kind === 'appOnly');
+                const defCat = document.getElementById('csvDefaultCategory').value;
+                const changes = [...adds, ...updates];
+                const badge = (txt, color) => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;color:#fff;background:${color};">${txt}</span>`;
+                const acctCell = a => a.accountChange ? `${esc(a.appAccount) || '<i>none</i>'} → <b>${esc(a.account)}</b>` : esc(a.account);
+                let html = '';
+                html += `<div style="margin:6px 0;color:#333;">${changes.length} proposed change${changes.length === 1 ? '' : 's'} — tick to apply, untick to discard.</div>`;
+                if (changes.length) {
+                    html += `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead><tr>
+                            <th style="text-align:left;border-bottom:1px solid #ddd;padding:3px 6px;"><input type="checkbox" id="csvSelectAll" checked title="Select/clear all"></th>
+                            ${['Action','Trade','Account','Qty','Entry','Entry date','Category / note'].map(h => `<th style="text-align:left;border-bottom:1px solid #ddd;padding:3px 6px;">${h}</th>`).join('')}
+                        </tr></thead><tbody>`;
+                    changes.forEach(a => {
+                        const i = plan.indexOf(a);
+                        if (a.kind === 'add') {
+                            html += `<tr>
+                                <td><input type="checkbox" class="csv-apply" data-idx="${i}" checked></td>
+                                <td>${badge('ADD', '#28a745')}</td>
+                                <td>${esc(a.label)}</td>
+                                <td title="${esc(a.subAccounts)}">${esc(a.account)}</td>
+                                <td>${a.quantity}</td>
+                                <td>${money(a.entryPrice)}</td>
+                                <td>${a.entryDate || '<span style="color:#c60">today (no history)</span>'}</td>
+                                <td><select class="csv-cat" data-idx="${i}"><option value="Asymmetric"${defCat === 'Asymmetric' ? ' selected' : ''}>Asymmetric</option><option value="Resource"${defCat === 'Resource' ? ' selected' : ''}>Resource</option></select></td>
+                            </tr>`;
+                        } else {
+                            const qtyChg = Math.abs(a.appQty - a.quantity) > 0.001 ? `${a.appQty} → <b>${a.quantity}</b>` : String(a.quantity);
+                            const prChg = Math.abs(a.appEntry - a.entryPrice) > 0.005 ? `${money(a.appEntry)} → <b>${money(a.entryPrice)}</b>` : money(a.entryPrice);
+                            const note = a.singleLot ? '<span style="color:#888">reconcile to broker</span>' : '<span style="color:#c60">multi-lot — edit manually</span>';
+                            html += `<tr>
+                                <td><input type="checkbox" class="csv-apply" data-idx="${i}" ${a.singleLot ? 'checked' : 'disabled'}></td>
+                                <td>${badge('UPDATE', '#e8890c')}</td>
+                                <td>${esc(a.label)}</td>
+                                <td title="${esc(a.subAccounts)}">${acctCell(a)}</td>
+                                <td>${qtyChg}</td>
+                                <td>${prChg}</td>
+                                <td>${a.entryDate || ''}</td>
+                                <td>${note}</td>
+                            </tr>`;
+                        }
+                    });
+                    html += '</tbody></table>';
+                } else {
+                    html += '<div style="color:#2e7d32;margin:8px 0;">No adds or updates needed.</div>';
+                }
+                if (appOnly.length) html += `<div style="margin:14px 0 4px;font-weight:bold;">❓ In app, not in broker positions (${appOnly.length})</div>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>${appOnly.map(a => `<tr><td style="padding:3px 6px;">${esc(a.label)}</td><td style="padding:3px 6px;">${a.quantity}</td><td style="padding:3px 6px;color:#888;">${esc(a.account)} — possibly closed, or a different account</td></tr>`).join('')}</tbody></table>`;
+                if (oks.length) html += `<div style="margin:10px 0;color:#2e7d32;">✅ ${oks.length} holding${oks.length === 1 ? '' : 's'} already match.</div>`;
+                el.innerHTML = html;
+                const selAll = document.getElementById('csvSelectAll');
+                if (selAll) selAll.addEventListener('change', () => {
+                    el.querySelectorAll('input.csv-apply:not(:disabled)').forEach(cb => { cb.checked = selAll.checked; });
+                    csvUpdateApplyBtn();
+                });
+                el.querySelectorAll('input.csv-apply').forEach(cb => cb.addEventListener('change', csvUpdateApplyBtn));
+                csvUpdateApplyBtn();
+            }
+
+            function applyCsvImport() {
+                const plan = csvImportState.plan || []; let added = 0, updated = 0;
+                document.querySelectorAll('#csvReview input.csv-apply:checked').forEach(cb => {
+                    const a = plan[+cb.dataset.idx]; if (!a) return;
+                    if (a.kind === 'add') {
+                        const sel = document.querySelector(`select.csv-cat[data-idx="${cb.dataset.idx}"]`);
+                        const cat = sel ? sel.value : document.getElementById('csvDefaultCategory').value;
+                        const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || new Date().toISOString().slice(0, 10), exit_date: null, exit_price: null, entry_goal: null, profit_exit: null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
+                        if (a.holding.type === 'option') { trade.expiration = a.holding.expiration; trade.strike = Number(a.holding.strike); trade.option_type = a.holding.option_type; }
+                        tradesData.push(trade); added++;
+                    } else if (a.kind === 'update' && a.singleLot) {
+                        const t = tradesData[a.appIdx];
+                        if (t) { t.quantity = a.quantity; t.entry_price = csvRound2(a.entryPrice); if (a.entryDate) t.entry_date = a.entryDate; if (a.account) t.account = a.account; updated++; }
+                    }
+                });
+                saveState(); generateTable();
+                Object.keys(dynamicPanelConfigs).forEach(pid => { const n = parseInt(pid.replace('dynPanel_', '')); if (!isNaN(n) && dynamicPanelConfigs[pid].type === 'table') renderDynamicTable(n); });
+                closeCsvImportModal();
+                alert(`CSV import complete: ${added} added, ${updated} updated.`);
+            }
+
             // ===== Summary Section =====
             let summaryEntries = defaultSummaryEntries.map(e => ({...e}));
             let summaryIdCounter = 4;
@@ -4643,6 +5067,25 @@
                         e.target.value = ''; // reset so same file can be re-imported
                     }
                 });
+                
+                // CSV import (Schwab / Fidelity positions & history)
+                const importCsvInput = document.getElementById('importCsvFile');
+                if (importCsvInput) {
+                    importCsvInput.addEventListener('change', function(e) {
+                        if (e.target.files.length > 0) { openCsvImportModal(); handleCsvFiles(e.target.files); e.target.value = ''; }
+                    });
+                }
+                const csvDrop = document.getElementById('csvDrop');
+                if (csvDrop) {
+                    csvDrop.addEventListener('click', () => document.getElementById('importCsvFile').click());
+                    csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.style.background = '#eef6f8'; });
+                    csvDrop.addEventListener('dragleave', () => { csvDrop.style.background = ''; });
+                    csvDrop.addEventListener('drop', e => { e.preventDefault(); csvDrop.style.background = ''; if (e.dataTransfer.files.length) handleCsvFiles(e.dataTransfer.files); });
+                }
+                const csvMatch = document.getElementById('csvMatchAccount');
+                if (csvMatch) csvMatch.addEventListener('change', () => { if (csvImportState.plan) buildAndRenderPlan(); });
+                const csvDefCat = document.getElementById('csvDefaultCategory');
+                if (csvDefCat) csvDefCat.addEventListener('change', () => { if (csvImportState.plan) renderCsvPlan(csvImportState.plan); });
                 
                 // Load URL parameters after other initializations
                 setTimeout(() => {
