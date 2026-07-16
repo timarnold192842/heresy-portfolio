@@ -3249,10 +3249,25 @@
                 if (p.type === 'option') { o.strike = Number(p.strike); o.expiration = p.expiration; o.option_type = p.option_type; }
                 return o;
             }
+            // Normalize an expiration to canonical YYYY-MM-DD so identities match
+            // regardless of whether a trade stores "12/18/2026" or "2026-12-18".
+            function csvNormExp(exp) {
+                if (!exp) return '';
+                const s = String(exp).trim();
+                let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+                if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+                m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+                if (m) { let y = m[3]; if (y.length === 2) y = '20' + y; return `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
+                const d = new Date(s);
+                if (!isNaN(d)) return d.toISOString().slice(0, 10);
+                return s;
+            }
             function csvIdentity(o) {
                 if (!o || !o.ticker) return null;
-                if (o.type === 'stock') return 'STK|' + o.ticker;
-                return 'OPT|' + o.ticker + '|' + o.expiration + '|' + Number(o.strike) + '|' + o.option_type;
+                const tk = String(o.ticker).trim().toUpperCase();
+                if (o.type === 'stock') return 'STK|' + tk;
+                const ot = String(o.option_type || '').trim().charAt(0).toUpperCase();
+                return 'OPT|' + tk + '|' + csvNormExp(o.expiration) + '|' + Number(o.strike) + '|' + ot;
             }
             function csvLabel(g) { return getTradeDisplay({ type: g.type, ticker: g.ticker, expiration: g.expiration, strike: g.strike, option_type: g.option_type }); }
 
