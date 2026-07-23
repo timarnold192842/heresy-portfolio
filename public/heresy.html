@@ -2272,9 +2272,18 @@
                 
                 console.log(`Fetching historical data from ${fromDateStr} to ${toDateStr}`);
                 
-                // Apply trade filter and get unique tickers
+                // Apply trade filter and get unique tickers.
+                // tradeFilter may be a legacy string ('all'|'open'|'closed'|'stocks'|'options'|'asymmetric'|'resource')
+                // or an object { status, category, type } for the separate chart dropdowns.
                 let filteredTrades = [...tradesData];
-                if (tradeFilter === 'open') {
+                if (tradeFilter && typeof tradeFilter === 'object') {
+                    const { status, category, type } = tradeFilter;
+                    if (status === 'open') filteredTrades = filteredTrades.filter(trade => !isTradeClosed(trade));
+                    else if (status === 'closed') filteredTrades = filteredTrades.filter(trade => isTradeClosed(trade));
+                    if (category && category !== 'all') filteredTrades = filteredTrades.filter(trade => trade.category === category);
+                    if (type === 'stock' || type === 'stocks') filteredTrades = filteredTrades.filter(trade => trade.type === 'stock');
+                    else if (type === 'option' || type === 'options') filteredTrades = filteredTrades.filter(trade => trade.type === 'option');
+                } else if (tradeFilter === 'open') {
                     filteredTrades = filteredTrades.filter(trade => !isTradeClosed(trade));
                 } else if (tradeFilter === 'closed') {
                     filteredTrades = filteredTrades.filter(trade => isTradeClosed(trade));
@@ -3923,8 +3932,24 @@
                 const id = numId != null ? numId : dynamicIdCounter++;
                 if (id >= dynamicIdCounter) dynamicIdCounter = id + 1;
                 const panelId = `dynPanel_${id}`;
-                const cfg = config || { period: '6M', filter: 'all' };
-                dynamicPanelConfigs[panelId] = { type: 'chart', ...cfg };
+                const cfg = config || { period: '6M', category: 'all', status: 'all' };
+                // Migrate legacy single-"filter" configs to separate category + status.
+                if (cfg.category === undefined || cfg.status === undefined) {
+                    const f = cfg.filter;
+                    if (cfg.status === undefined) cfg.status = (f === 'open' || f === 'closed') ? f : 'all';
+                    if (cfg.category === undefined) {
+                        if (f === 'asymmetric') cfg.category = 'Asymmetric';
+                        else if (f === 'resource') cfg.category = 'Resource';
+                        else {
+                            // Fall back to the panel's name (e.g. "Resource - Graph").
+                            const nm = (sectionNames[panelId] || '').toLowerCase();
+                            cfg.category = nm.includes('resource') ? 'Resource' : (nm.includes('asymmetric') ? 'Asymmetric' : 'all');
+                        }
+                    }
+                }
+                delete cfg.filter;
+                if (!cfg.period) cfg.period = '6M';
+                dynamicPanelConfigs[panelId] = { type: 'chart', period: cfg.period, category: cfg.category, status: cfg.status };
                 if (!sectionOrder.includes(panelId)) sectionOrder.push(panelId);
                 if (!sectionNames[panelId]) sectionNames[panelId] = `Chart ${id}`;
 
@@ -3939,7 +3964,7 @@
                         <span class="toggle-icon">▼</span>
                         <h2 class="section-title" data-section-id="${panelId}">${sectionNames[panelId]}</h2>
                         <label>Period:
-                            <select id="dynPeriod_${id}" data-role="period">
+                            <select id="dynPeriod_${id}" data-role="period" onchange="renderDynamicChart(${id})">
                                 <option value="1M" ${cfg.period==='1M'?'selected':''}>1M</option>
                                 <option value="3M" ${cfg.period==='3M'?'selected':''}>3M</option>
                                 <option value="6M" ${cfg.period==='6M'?'selected':''}>6M</option>
@@ -3948,15 +3973,18 @@
                                 <option value="ALL" ${cfg.period==='ALL'?'selected':''}>ALL</option>
                             </select>
                         </label>
-                        <label>Filter:
-                            <select id="dynFilter_${id}" data-role="filter">
-                                <option value="all" ${cfg.filter==='all'?'selected':''}>All</option>
-                                <option value="open" ${cfg.filter==='open'?'selected':''}>Open</option>
-                                <option value="closed" ${cfg.filter==='closed'?'selected':''}>Closed</option>
-                                <option value="stocks" ${cfg.filter==='stocks'?'selected':''}>Stocks</option>
-                                <option value="options" ${cfg.filter==='options'?'selected':''}>Options</option>
-                                <option value="asymmetric" ${cfg.filter==='asymmetric'?'selected':''}>Asymmetric</option>
-                                <option value="resource" ${cfg.filter==='resource'?'selected':''}>Resource</option>
+                        <label>Category:
+                            <select id="dynCategory_${id}" data-role="category" onchange="renderDynamicChart(${id})">
+                                <option value="all" ${cfg.category==='all'?'selected':''}>All</option>
+                                <option value="Asymmetric" ${cfg.category==='Asymmetric'?'selected':''}>Asymmetric</option>
+                                <option value="Resource" ${cfg.category==='Resource'?'selected':''}>Resource</option>
+                            </select>
+                        </label>
+                        <label>Status:
+                            <select id="dynStatus_${id}" data-role="status" onchange="renderDynamicChart(${id})">
+                                <option value="all" ${cfg.status==='all'?'selected':''}>All</option>
+                                <option value="open" ${cfg.status==='open'?'selected':''}>Open</option>
+                                <option value="closed" ${cfg.status==='closed'?'selected':''}>Closed</option>
                             </select>
                         </label>
                         <button style="background:#007acc;color:white;cursor:pointer;" onclick="renderDynamicChart(${id})">Update</button>
@@ -3975,18 +4003,31 @@
             const dynamicCharts = {};
             async function renderDynamicChart(id) {
                 const periodEl = document.getElementById(`dynPeriod_${id}`);
-                const filterEl = document.getElementById(`dynFilter_${id}`);
-                if (!periodEl || !filterEl) return;
+                const categoryEl = document.getElementById(`dynCategory_${id}`);
+                const statusEl = document.getElementById(`dynStatus_${id}`);
+                if (!periodEl || !categoryEl || !statusEl) return;
                 const period = periodEl.value;
-                const filter = filterEl.value;
+                const category = categoryEl.value;
+                const status = statusEl.value;
+                // Persist the selection so it survives reloads/refreshes.
+                const panelId = `dynPanel_${id}`;
+                if (dynamicPanelConfigs[panelId]) {
+                    dynamicPanelConfigs[panelId] = { ...dynamicPanelConfigs[panelId], type: 'chart', period, category, status };
+                    saveState();
+                }
                 try {
-                    const { fromDate, toDate, filteredTrades } = await fetchHistoricalData(period, filter);
-                    if (filteredTrades.length === 0) return;
+                    const { fromDate, toDate, filteredTrades } = await fetchHistoricalData(period, { status, category });
+                    if (filteredTrades.length === 0) {
+                        if (dynamicCharts[id]) { dynamicCharts[id].destroy(); delete dynamicCharts[id]; }
+                        return;
+                    }
                     const { dateRange, portfolioValues, costBasisValues } = calculatePortfolioValues(fromDate, toDate, filteredTrades);
                     const canvas = document.getElementById(`dynCanvas_${id}`);
                     if (!canvas) return;
                     if (dynamicCharts[id]) dynamicCharts[id].destroy();
                     const labels = dateRange.map(d => typeof d === 'string' ? new Date(d) : d);
+                    const catLabel = category === 'all' ? 'All categories' : category;
+                    const statLabel = status === 'all' ? 'All' : (status.charAt(0).toUpperCase() + status.slice(1));
                     dynamicCharts[id] = new Chart(canvas.getContext('2d'), {
                         type: 'line',
                         data: {
@@ -3999,7 +4040,7 @@
                         options: {
                             responsive: true, maintainAspectRatio: false,
                             scales: { x: { type: 'time', time: { unit: 'day' } }, y: { beginAtZero: false } },
-                            plugins: { legend: { position: 'top' }, title: { display: true, text: `${filter} (${period})`, font: { family: 'Courier New' } } }
+                            plugins: { legend: { position: 'top' }, title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: 'Courier New' } } }
                         }
                     });
                 } catch (err) { console.error('Dynamic chart error:', err); }

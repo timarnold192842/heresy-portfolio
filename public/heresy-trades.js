@@ -2424,12 +2424,14 @@ var defaultTradesData =
       "dynPanel_3": {
         "type": "chart",
         "period": "6M",
-        "filter": "all"
+        "category": "Resource",
+        "status": "all"
       },
       "dynPanel_4": {
         "type": "chart",
         "period": "6M",
-        "filter": "all"
+        "category": "Asymmetric",
+        "status": "all"
       }
     },
     "summaryEntries": [
