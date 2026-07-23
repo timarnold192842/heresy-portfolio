@@ -3494,12 +3494,28 @@
                         }
                     }
                 });
-                // App open trades never matched to a broker holding.
+                // App open trades never matched to a broker holding. If transaction
+                // history shows a closing trade for the same option/stock, propose
+                // marking it closed (exit date/price from history); otherwise flag as info.
                 appByIdentity.forEach((lots, idk) => {
+                    const closeTxs = (txById.get(idk) || []).filter(t => t.action === 'close' && t.date);
+                    let exitDate = null, exitPrice = null, closeQty = 0;
+                    if (closeTxs.length) {
+                        const latest = closeTxs.slice().sort((a, b) => a.date < b.date ? 1 : -1)[0];
+                        closeQty = closeTxs.reduce((s, x) => s + (x.quantity || 0), 0);
+                        const wSum = closeTxs.reduce((s, x) => s + ((x.price || 0) * (x.quantity || 0)), 0);
+                        exitPrice = closeQty ? wSum / closeQty : (latest.price != null ? latest.price : null);
+                        exitDate = latest.date;
+                    }
                     lots.forEach(l => {
                         if (usedAppIdx.has(l.idx)) return;
                         const t = tradesData[l.idx];
-                        actions.push({ kind: 'appOnly', identity: idk, label: getTradeDisplay(t), quantity: l.quantity, account: t.account || '' });
+                        const label = getTradeDisplay(t);
+                        if (closeTxs.length) {
+                            actions.push({ kind: 'close', identity: idk, label, account: t.account || '', quantity: l.quantity, appIdx: l.idx, appEntry: t.entry_price, exitDate, exitPrice, closeQty });
+                        } else {
+                            actions.push({ kind: 'appOnly', identity: idk, label, quantity: l.quantity, account: t.account || '' });
+                        }
                     });
                 });
                 return actions;
@@ -3522,10 +3538,11 @@
                 }
                 const adds = plan.filter(a => a.kind === 'add');
                 const updates = plan.filter(a => a.kind === 'update');
+                const closes = plan.filter(a => a.kind === 'close');
                 const oks = plan.filter(a => a.kind === 'ok');
                 const appOnly = plan.filter(a => a.kind === 'appOnly');
                 const defCat = document.getElementById('csvDefaultCategory').value;
-                const changes = [...adds, ...updates];
+                const changes = [...adds, ...updates, ...closes];
                 const badge = (txt, color) => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;color:#fff;background:${color};">${txt}</span>`;
                 const acctCell = a => a.accountChange ? `${esc(a.appAccount) || '<i>none</i>'} → <b>${esc(a.account)}</b>` : esc(a.account);
                 let html = '';
@@ -3549,7 +3566,7 @@
                                 <td>${a.entryDate || '<span style="color:#c60">today (no history)</span>'}</td>
                                 <td><select class="csv-cat" data-idx="${i}"><option value="Asymmetric"${defCat === 'Asymmetric' ? ' selected' : ''}>Asymmetric</option><option value="Resource"${defCat === 'Resource' ? ' selected' : ''}>Resource</option></select></td>
                             </tr>`;
-                        } else {
+                        } else if (a.kind === 'update') {
                             const qtyChg = Math.abs(a.appQty - a.quantity) > 0.001 ? `${a.appQty} → <b>${a.quantity}</b>` : String(a.quantity);
                             const prChg = Math.abs(a.appEntry - a.entryPrice) > 0.005 ? `${money(a.appEntry)} → <b>${money(a.entryPrice)}</b>` : money(a.entryPrice);
                             const note = a.singleLot ? '<span style="color:#888">reconcile to broker</span>' : '<span style="color:#c60">multi-lot — edit manually</span>';
@@ -3562,6 +3579,19 @@
                                 <td>${prChg}</td>
                                 <td>${a.entryDate || ''}</td>
                                 <td>${note}</td>
+                            </tr>`;
+                        } else if (a.kind === 'close') {
+                            const qtyNote = (a.closeQty != null && Math.abs((a.closeQty || 0) - a.quantity) > 0.01) ? ` <span style="color:#c60">(history sold ${a.closeQty})</span>` : '';
+                            const priceCell = (a.exitPrice != null) ? `${money(a.appEntry)} → <b>exit ${money(a.exitPrice)}</b>` : `${money(a.appEntry)} → <span style="color:#c60">exit ?</span>`;
+                            html += `<tr>
+                                <td><input type="checkbox" class="csv-apply" data-idx="${i}" checked></td>
+                                <td>${badge('CLOSE', '#8e44ad')}</td>
+                                <td>${esc(a.label)}</td>
+                                <td>${esc(a.account)}</td>
+                                <td>${a.quantity}${qtyNote}</td>
+                                <td>${priceCell}</td>
+                                <td>${a.exitDate || ''}</td>
+                                <td><span style="color:#888">mark closed (from history)</span></td>
                             </tr>`;
                         }
                     });
@@ -3583,7 +3613,7 @@
             }
 
             function applyCsvImport() {
-                const plan = csvImportState.plan || []; let added = 0, updated = 0;
+                const plan = csvImportState.plan || []; let added = 0, updated = 0, closed = 0;
                 document.querySelectorAll('#csvReview input.csv-apply:checked').forEach(cb => {
                     const a = plan[+cb.dataset.idx]; if (!a) return;
                     if (a.kind === 'add') {
@@ -3595,12 +3625,15 @@
                     } else if (a.kind === 'update' && a.singleLot) {
                         const t = tradesData[a.appIdx];
                         if (t) { t.quantity = a.quantity; t.entry_price = csvRound2(a.entryPrice); if (a.entryDate) t.entry_date = a.entryDate; if (a.account) t.account = a.account; updated++; }
+                    } else if (a.kind === 'close') {
+                        const t = tradesData[a.appIdx];
+                        if (t) { if (a.exitDate) t.exit_date = a.exitDate; if (a.exitPrice != null) t.exit_price = csvRound2(a.exitPrice); closed++; }
                     }
                 });
                 saveState(); generateTable();
                 Object.keys(dynamicPanelConfigs).forEach(pid => { const n = parseInt(pid.replace('dynPanel_', '')); if (!isNaN(n) && dynamicPanelConfigs[pid].type === 'table') renderDynamicTable(n); });
                 closeCsvImportModal();
-                alert(`CSV import complete: ${added} added, ${updated} updated.`);
+                alert(`CSV import complete: ${added} added, ${updated} updated, ${closed} closed.`);
             }
 
             // ===== Summary Section =====
