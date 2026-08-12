@@ -3423,7 +3423,7 @@
 
             function parseTradingViewGroundTruthRows(rawText) {
                 if (!rawText || !rawText.trim()) return [];
-                const text = rawText.replace(/\u00a0/g, ' ').replace(/<br\s*\/?>/gi, ' ');
+                const text = rawText.replace(/\u00a0/g, ' ').replace(/<br\s*\/?>/gi, '\n');
                 const rows = [];
                 const re = /\[([A-Z][A-Z0-9.\-]+)\]\([^\)]*\)\s*(Shares|Call|Put)\s*(?:(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*)?\$?(\d+(?:\.\d+)?)\s*\$?(\d+(?:\.\d+)?)\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*\$?(\d+(?:\.\d+)?)(?=\s*(?:\[|$))/gi;
                 let m;
@@ -3463,6 +3463,69 @@
                         strike,
                         expiration: expiry,
                         option_type: kind === 'put' ? 'P' : 'C',
+                        entry_date: parseTradingViewDate(openedText),
+                        entryDate: parseTradingViewDate(openedText),
+                        type: 'option'
+                    });
+                }
+                if (rows.length) return rows;
+
+                const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+                const headerIdx = lines.findIndex(line => /stock symbol|symbol/i.test(line) && /call or put|type/i.test(line) && /expiration date|expiration/i.test(line));
+                if (headerIdx < 0) return [];
+
+                const headerLine = lines[headerIdx];
+                const delim = headerLine.includes('\t') ? '\t' : (headerLine.includes('|') ? '|' : ',');
+                const headerCells = headerLine.split(delim).map(c => String(c).trim());
+                const canonicalHeader = h => String(h).trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+                const headerMap = headerCells.map(canonicalHeader);
+                const findHeader = key => {
+                    const target = canonicalHeader(key);
+                    const idx = headerMap.findIndex(h => h === target || h.includes(target) || target.includes(h));
+                    return idx;
+                };
+
+                for (let i = headerIdx + 1; i < lines.length; i++) {
+                    const line = lines[i];
+                    if (!line || /^(view price|view trade)$/i.test(line)) continue;
+                    const cells = line.split(delim).map(c => String(c).trim());
+                    if (cells.length < 2) continue;
+                    const symbol = (cells[findHeader('Stock Symbol')] || cells[findHeader('Symbol')] || '').replace(/^\*+|\*+$/g, '').trim();
+                    if (!symbol) continue;
+                    const kindText = (cells[findHeader('Call or Put')] || cells[findHeader('Type')] || '').trim();
+                    const strikeText = cells[findHeader('Strike Price')] || '';
+                    const entryText = cells[findHeader('Entry Price')] || '';
+                    const openedText = cells[findHeader('Date Trade Opened')] || '';
+                    const expiryText = cells[findHeader('Expiration Date')] || '';
+                    const targetText = cells[findHeader('Target Profit Exit')] || '';
+                    const isStock = /shares/i.test(kindText);
+                    const parsedTarget = Number(String(targetText).replace(/[$,%\s]/g, '').replace(/,/g, ''));
+                    const parsedEntry = Number(String(entryText).replace(/[$,%\s]/g, '').replace(/,/g, ''));
+                    const normalized = {
+                        source: 'TradingView',
+                        account: 'TradingView',
+                        type: isStock ? 'stock' : 'option',
+                        ticker: symbol.toUpperCase(),
+                        quantity: 1,
+                        entry_price: Number.isFinite(parsedEntry) ? parsedEntry : null,
+                        entryPrice: Number.isFinite(parsedEntry) ? parsedEntry : null,
+                        profit_exit: Number.isFinite(parsedTarget) ? parsedTarget : null,
+                        targetProfit: Number.isFinite(parsedTarget) ? parsedTarget : null,
+                        entryDate: parseTradingViewDate(openedText),
+                        entry_date: parseTradingViewDate(openedText),
+                        category: 'Asymmetric'
+                    };
+                    if (isStock) {
+                        rows.push(normalized);
+                        continue;
+                    }
+                    const strike = Number(String(strikeText).replace(/[$,%\s]/g, '').replace(/,/g, ''));
+                    const expiry = parseTradingViewDate(expiryText);
+                    rows.push({
+                        ...normalized,
+                        strike,
+                        expiration: expiry,
+                        option_type: /^put$/i.test(kindText) ? 'P' : 'C',
                         entry_date: parseTradingViewDate(openedText),
                         entryDate: parseTradingViewDate(openedText),
                         type: 'option'
