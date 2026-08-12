@@ -3624,12 +3624,20 @@
                     if (txs.length) entryDate = txs[0].date;
                     const subAccounts = [...g.subAccounts].join(', ');
                     const available = (appByIdentity.get(g.identity) || []).filter(l => !usedAppIdx.has(l.idx));
-                    // Match preference: same broker account, then unassigned (Unknown/blank); if not separating, any lot.
-                    let matchLots;
-                    if (!separateAccounts) matchLots = available;
-                    else {
-                        matchLots = available.filter(l => csvSameAccount(l.account, g.account));
-                        if (!matchLots.length) matchLots = available.filter(l => csvIsUnassigned(l.account));
+                    // Match existing app trades by identity before treating the CSV row as a new add.
+                    // If the account differs but the trade is otherwise the same identity, prefer the
+                    // existing trade as the match and surface an update instead of a false add.
+                    let matchLots = [];
+                    if (!separateAccounts) {
+                        matchLots = available;
+                    } else {
+                        const sameAccount = available.filter(l => csvSameAccount(l.account, g.account));
+                        if (sameAccount.length) matchLots = sameAccount;
+                        else if (available.length === 1) matchLots = available;
+                        else {
+                            const unassigned = available.filter(l => csvIsUnassigned(l.account));
+                            matchLots = unassigned.length ? unassigned : available.slice(0, 1);
+                        }
                     }
                     const label = csvLabel(g);
                     const targetProfit = g.profit_exit ?? g.targetProfit ?? null;
