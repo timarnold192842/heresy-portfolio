@@ -1368,6 +1368,14 @@
                 <div id="csvDrop" style="border: 2px dashed #bbb; border-radius: 6px; padding: 16px; text-align: center; color: #666; cursor: pointer; margin-bottom: 10px;">
                     Drag CSV files here, or <span style="color:#17a2b8; text-decoration: underline;">click to choose</span>
                 </div>
+                <div style="margin-bottom: 10px; padding: 10px; background: #f5f7fb; border: 1px solid #dfe8f4; border-radius: 6px;">
+                    <div style="font-weight: 600; margin-bottom: 6px;">Paste a TradingView open-trades table</div>
+                    <textarea id="csvPasteTable" rows="4" style="width: 100%; box-sizing: border-box; resize: vertical; font-family: 'Courier New', Courier, monospace; font-size: 12px;" placeholder="Paste the exact rows from a 'Table of All Open Trades' page here..."></textarea>
+                    <div class="form-row" style="justify-content: flex-start; gap: 8px; margin-top: 8px;">
+                        <button onclick="parseTradingViewGroundTruth()" style="padding: 8px 12px; background:#007acc; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Parse table</button>
+                        <button type="button" onclick="document.getElementById('csvPasteTable').value=''" style="padding: 8px 12px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Clear</button>
+                    </div>
+                </div>
                 <div id="csvFileList" style="margin-bottom: 10px; font-size: 12px; color: #444;"></div>
                 <div class="form-row" style="align-items: center; gap: 12px; margin-bottom: 10px;">
                     <label>Default category for new trades:
@@ -3404,6 +3412,82 @@
                 return { kind: null, holdings: [], transactions: [] };
             }
 
+            function parseTradingViewDate(s) {
+                if (!s) return null;
+                const t = String(s).trim();
+                const m = t.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/i);
+                if (!m) return null;
+                const month = new Date(Date.parse(`${m[2]} 1, ${m[3]}`)).getMonth() + 1;
+                return `${m[3]}-${String(month).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+            }
+
+            function parseTradingViewGroundTruthRows(rawText) {
+                if (!rawText || !rawText.trim()) return [];
+                const text = rawText.replace(/\u00a0/g, ' ').replace(/<br\s*\/?>/gi, ' ');
+                const rows = [];
+                const re = /\[([A-Z][A-Z0-9.\-]+)\]\([^\)]*\)\s*(Shares|Call|Put)\s*(?:(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*)?\$?(\d+(?:\.\d+)?)\s*\$?(\d+(?:\.\d+)?)\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*\$?(\d+(?:\.\d+)?)(?=\s*(?:\[|$))/gi;
+                let m;
+                while ((m = re.exec(text)) !== null) {
+                    const symbol = m[1].toUpperCase();
+                    const kind = m[2].toLowerCase();
+                    const expiryText = m[3] || null;
+                    const strikeText = m[4];
+                    const entryText = m[5];
+                    const openedText = m[6];
+                    const targetText = m[7];
+                    const isStock = kind === 'shares';
+                    const targetProfit = Number(targetText);
+                    const entryPrice = Number(entryText);
+                    const normalized = {
+                        source: 'TradingView',
+                        account: 'TradingView',
+                        type: isStock ? 'stock' : 'option',
+                        ticker: symbol,
+                        quantity: 1,
+                        entry_price: entryPrice,
+                        entryPrice,
+                        profit_exit: Number.isFinite(targetProfit) ? targetProfit : null,
+                        targetProfit: Number.isFinite(targetProfit) ? targetProfit : null,
+                        entryDate: parseTradingViewDate(openedText),
+                        entry_date: parseTradingViewDate(openedText),
+                        category: 'Asymmetric'
+                    };
+                    if (isStock) {
+                        rows.push(normalized);
+                        continue;
+                    }
+                    const strike = Number(strikeText);
+                    const expiry = parseTradingViewDate(expiryText);
+                    rows.push({
+                        ...normalized,
+                        strike,
+                        expiration: expiry,
+                        option_type: kind === 'put' ? 'P' : 'C',
+                        entry_date: parseTradingViewDate(openedText),
+                        entryDate: parseTradingViewDate(openedText),
+                        type: 'option'
+                    });
+                }
+                return rows;
+            }
+
+            function parseTradingViewGroundTruth() {
+                const raw = document.getElementById('csvPasteTable').value;
+                const parsed = parseTradingViewGroundTruthRows(raw);
+                if (!parsed.length) {
+                    alert('No trades were recognized from the pasted content. Please paste the full table rows as shown in the page.');
+                    return;
+                }
+                const existing = csvImportState.holdings.filter(h => h.source !== 'TradingView');
+                const name = 'TradingView open trades (pasted)';
+                csvImportState.holdings = [...existing, ...parsed];
+                const fileEntry = { name, kind: 'TradingView open trades', holdings: parsed.length, transactions: 0 };
+                const idx = csvImportState.files.findIndex(f => f.name === name);
+                if (idx >= 0) csvImportState.files[idx] = fileEntry; else csvImportState.files.push(fileEntry);
+                renderCsvFileList();
+                buildAndRenderPlan();
+            }
+
             function handleCsvFiles(fileList) {
                 const files = [...fileList]; let pending = files.length;
                 if (!pending) return;
@@ -3485,8 +3569,9 @@
                         if (!matchLots.length) matchLots = available.filter(l => csvIsUnassigned(l.account));
                     }
                     const label = csvLabel(g);
+                    const targetProfit = g.profit_exit ?? g.targetProfit ?? null;
                     if (!matchLots.length) {
-                        actions.push({ kind: 'add', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity });
+                        actions.push({ kind: 'add', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity, targetProfit });
                     } else {
                         const appQty = matchLots.reduce((s, l) => s + l.quantity, 0);
                         const appBasis = matchLots.reduce((s, l) => s + l.basis, 0);
@@ -3496,8 +3581,9 @@
                         const qtyDiff = Math.abs(appQty - g.quantity);
                         const priceRel = entryPrice ? Math.abs(appEntry - entryPrice) / entryPrice : 0;
                         const accountChange = separateAccounts && !csvSameAccount(appAccount, g.account);
-                        if (qtyDiff > 0.01 || priceRel > 0.01 || accountChange) {
-                            actions.push({ kind: 'update', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity, appQty, appEntry, appAccount, accountChange, singleLot: matchLots.length === 1, appIdx: matchLots[0].idx });
+                        const profitDiff = targetProfit != null && matchLots[0] && tradesData[matchLots[0].idx] && Number(tradesData[matchLots[0].idx].profit_exit || 0) !== Number(targetProfit);
+                        if (qtyDiff > 0.01 || priceRel > 0.01 || accountChange || profitDiff) {
+                            actions.push({ kind: 'update', identity: g.identity, label, account: g.account, subAccounts, holding: g, entryPrice, entryDate, quantity: g.quantity, appQty, appEntry, appAccount, accountChange, singleLot: matchLots.length === 1, appIdx: matchLots[0].idx, targetProfit, profitDiff });
                         } else {
                             actions.push({ kind: 'ok', identity: g.identity, label, account: g.account, quantity: g.quantity });
                         }
@@ -3565,6 +3651,7 @@
                     changes.forEach(a => {
                         const i = plan.indexOf(a);
                         if (a.kind === 'add') {
+                            const targ = a.targetProfit != null ? `<div style="font-size:11px;color:#666;">Target ${money(a.targetProfit)}</div>` : '';
                             html += `<tr>
                                 <td><input type="checkbox" class="csv-apply" data-idx="${i}" checked></td>
                                 <td>${badge('ADD', '#28a745')}</td>
@@ -3573,11 +3660,12 @@
                                 <td>${a.quantity}</td>
                                 <td>${money(a.entryPrice)}</td>
                                 <td>${a.entryDate || '<span style="color:#c60">today (no history)</span>'}</td>
-                                <td><select class="csv-cat" data-idx="${i}"><option value="Asymmetric"${defCat === 'Asymmetric' ? ' selected' : ''}>Asymmetric</option><option value="Resource"${defCat === 'Resource' ? ' selected' : ''}>Resource</option></select></td>
+                                <td><select class="csv-cat" data-idx="${i}"><option value="Asymmetric"${defCat === 'Asymmetric' ? ' selected' : ''}>Asymmetric</option><option value="Resource"${defCat === 'Resource' ? ' selected' : ''}>Resource</option></select>${targ}</td>
                             </tr>`;
                         } else if (a.kind === 'update') {
                             const qtyChg = Math.abs(a.appQty - a.quantity) > 0.001 ? `${a.appQty} → <b>${a.quantity}</b>` : String(a.quantity);
                             const prChg = Math.abs(a.appEntry - a.entryPrice) > 0.005 ? `${money(a.appEntry)} → <b>${money(a.entryPrice)}</b>` : money(a.entryPrice);
+                            const targetText = a.targetProfit != null ? `<div style="font-size:11px;color:#666;">Target ${money(a.targetProfit)}</div>` : '';
                             const note = a.singleLot ? '<span style="color:#888">reconcile to broker</span>' : '<span style="color:#c60">multi-lot — edit manually</span>';
                             html += `<tr>
                                 <td><input type="checkbox" class="csv-apply" data-idx="${i}" ${a.singleLot ? 'checked' : 'disabled'}></td>
@@ -3587,7 +3675,7 @@
                                 <td>${qtyChg}</td>
                                 <td>${prChg}</td>
                                 <td>${a.entryDate || ''}</td>
-                                <td>${note}</td>
+                                <td>${note}${targetText}</td>
                             </tr>`;
                         } else if (a.kind === 'close') {
                             const qtyNote = (a.closeQty != null && Math.abs((a.closeQty || 0) - a.quantity) > 0.01) ? ` <span style="color:#c60">(history sold ${a.closeQty})</span>` : '';
@@ -3628,12 +3716,19 @@
                     if (a.kind === 'add') {
                         const sel = document.querySelector(`select.csv-cat[data-idx="${cb.dataset.idx}"]`);
                         const cat = sel ? sel.value : document.getElementById('csvDefaultCategory').value;
-                        const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || new Date().toISOString().slice(0, 10), exit_date: null, exit_price: null, entry_goal: null, profit_exit: null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
+                        const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || new Date().toISOString().slice(0, 10), exit_date: null, exit_price: null, entry_goal: null, profit_exit: a.targetProfit ?? null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
                         if (a.holding.type === 'option') { trade.expiration = a.holding.expiration; trade.strike = Number(a.holding.strike); trade.option_type = a.holding.option_type; }
                         tradesData.push(trade); added++;
                     } else if (a.kind === 'update' && a.singleLot) {
                         const t = tradesData[a.appIdx];
-                        if (t) { t.quantity = a.quantity; t.entry_price = csvRound2(a.entryPrice); if (a.entryDate) t.entry_date = a.entryDate; if (a.account) t.account = a.account; updated++; }
+                        if (t) {
+                            t.quantity = a.quantity;
+                            t.entry_price = csvRound2(a.entryPrice);
+                            if (a.entryDate) t.entry_date = a.entryDate;
+                            if (a.account) t.account = a.account;
+                            if (a.targetProfit != null) t.profit_exit = a.targetProfit;
+                            updated++;
+                        }
                     } else if (a.kind === 'close') {
                         const t = tradesData[a.appIdx];
                         if (t) { if (a.exitDate) t.exit_date = a.exitDate; if (a.exitPrice != null) t.exit_price = csvRound2(a.exitPrice); closed++; }
