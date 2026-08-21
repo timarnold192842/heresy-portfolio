@@ -1308,12 +1308,9 @@
                     </select>
                 </label>
                 <label>Category:
-                    <select id="mainCategory" data-role="category" onchange="generateTable()">
-                        <option value="all" selected>All</option>
-                        <option value="Asymmetric">Asymmetric</option>
-                        <option value="Resource">Resource</option>
-                    </select>
+                    <select id="mainCategory" data-role="category" onchange="generateTable()"></select>
                 </label>
+                <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
                 <div class="panel-col-dropdown">
                     <button onclick="togglePanelColMenu('main', event)" style="cursor:pointer;">Columns ▼</button>
                     <div class="panel-col-menu" id="dynColMenu_main">
@@ -1379,11 +1376,9 @@
                 <div id="csvFileList" style="margin-bottom: 10px; font-size: 12px; color: #444;"></div>
                 <div class="form-row" style="align-items: center; gap: 12px; margin-bottom: 10px;">
                     <label>Default category for new trades:
-                        <select id="csvDefaultCategory">
-                            <option value="Asymmetric">Asymmetric</option>
-                            <option value="Resource">Resource</option>
-                        </select>
+                        <select id="csvDefaultCategory"></select>
                     </label>
+                    <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
                     <label style="display:inline-flex; align-items:center; gap:6px;" title="Keep the same ticker in different broker accounts as separate trades. The account is taken from the CSV (Schwab or Fidelity).">
                         <input type="checkbox" id="csvMatchAccount" checked> Separate by account (from CSV)
                     </label>
@@ -1395,6 +1390,24 @@
                 <div class="form-row" style="justify-content: flex-end; gap: 10px; margin-top: 12px;">
                     <button onclick="closeCsvImportModal()" style="padding: 8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Cancel</button>
                     <button id="csvApplyBtn" onclick="applyCsvImport()" disabled style="padding: 8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Apply selected</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Category Manager Modal -->
+        <div class="trade-modal-overlay" id="categoryManagerOverlay" onclick="if(event.target===this)closeCategoryManager()">
+            <div class="trade-modal" style="max-width: 500px; width: 90%;">
+                <h3>Manage Categories</h3>
+                <div id="categoryManagerList" style="margin: 8px 0 12px;"></div>
+                <div class="form-row" style="align-items:flex-end; gap:8px;">
+                    <div class="form-field" style="flex:1;">
+                        <label>New category</label>
+                        <input id="newCategoryName" type="text" placeholder="e.g. Core">
+                    </div>
+                    <button type="button" class="btn-add" onclick="const v=document.getElementById('newCategoryName').value; if (addCategoryEntry(v)) { document.getElementById('newCategoryName').value=''; } else if (v.trim()) alert('Category already exists.');">Add</button>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn-cancel" onclick="closeCategoryManager()">Close</button>
                 </div>
             </div>
         </div>
@@ -1415,10 +1428,10 @@
                     </div>
                     <div class="form-field">
                         <label>Category</label>
-                        <select id="tradeCategory">
-                            <option value="Asymmetric">Asymmetric</option>
-                            <option value="Resource">Resource</option>
-                        </select>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <select id="tradeCategory" style="flex:1;"></select>
+                            <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
+                        </div>
                     </div>
                 </div>
                 <div class="price-display" id="tradePriceDisplay"></div>
@@ -2571,7 +2584,8 @@
             // Get selected categories from the dropdown
             function getSelectedCategories() {
                 const sel = document.getElementById('mainCategory');
-                return sel && sel.value !== 'all' ? [sel.value] : ['Asymmetric', 'Resource'];
+                if (sel && sel.value !== 'all') return [sel.value];
+                return getCategoryOptions();
             }
             
             function updateCategoryFilterDisplay() {
@@ -3723,6 +3737,7 @@
                         const i = plan.indexOf(a);
                         if (a.kind === 'add') {
                             const targ = a.targetProfit != null ? `<div style="font-size:11px;color:#666;">Target ${money(a.targetProfit)}</div>` : '';
+                            const catOptions = buildCategoryOptions(defCat, false);
                             html += `<tr>
                                 <td><input type="checkbox" class="csv-apply" data-idx="${i}" checked></td>
                                 <td>${badge('ADD', '#28a745')}</td>
@@ -3731,7 +3746,7 @@
                                 <td>${a.quantity}</td>
                                 <td>${money(a.entryPrice)}</td>
                                 <td>${a.entryDate || '<span style="color:#c60">today (no history)</span>'}</td>
-                                <td><select class="csv-cat" data-idx="${i}"><option value="Asymmetric"${defCat === 'Asymmetric' ? ' selected' : ''}>Asymmetric</option><option value="Resource"${defCat === 'Resource' ? ' selected' : ''}>Resource</option></select>${targ}</td>
+                                <td><select class="csv-cat" data-idx="${i}">${catOptions}</select>${targ}</td>
                             </tr>`;
                         } else if (a.kind === 'update') {
                             const qtyChg = Math.abs(a.appQty - a.quantity) > 0.001 ? `${a.appQty} → <b>${a.quantity}</b>` : String(a.quantity);
@@ -3911,11 +3926,7 @@
                             </select>
                         </label>
                         <label>Category
-                            <select id="summaryAddCategory">
-                                <option value="all" selected>All</option>
-                                <option value="Asymmetric">Asymmetric</option>
-                                <option value="Resource">Resource</option>
-                            </select>
+                            <select id="summaryAddCategory">${buildCategoryOptions('all', true)}</select>
                         </label>
                         <button onclick="doAddSummary()">Add</button>`;
                     popover.addEventListener('click', e => e.stopPropagation());
@@ -3974,6 +3985,142 @@
                 });
             }
 
+            const DEFAULT_CATEGORIES = ['Asymmetric', 'Resource'];
+            const CATEGORY_STORAGE_KEY = 'heresy-category-options';
+
+            function getCategoryOptions() {
+                try {
+                    const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
+                    if (!raw) return [...DEFAULT_CATEGORIES];
+                    const parsed = JSON.parse(raw);
+                    const list = Array.isArray(parsed) ? parsed : [];
+                    const merged = [...DEFAULT_CATEGORIES, ...list];
+                    return Array.from(new Set(merged.map(v => String(v).trim()).filter(Boolean)));
+                } catch (e) {
+                    return [...DEFAULT_CATEGORIES];
+                }
+            }
+
+            function saveCategoryOptions(list) {
+                const normalized = Array.from(new Set((list || []).map(v => String(v).trim()).filter(Boolean)));
+                localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(normalized));
+            }
+
+            function buildCategoryOptions(selectedValue, includeAll) {
+                const opts = []; 
+                if (includeAll) opts.push('<option value="all"' + (selectedValue === 'all' ? ' selected' : '') + '>All</option>');
+                getCategoryOptions().forEach(cat => {
+                    opts.push('<option value="' + cat + '"' + (selectedValue === cat ? ' selected' : '') + '>' + cat + '</option>');
+                });
+                return opts.join('');
+            }
+
+            function renderCategorySelectOptions(selectEl, selectedValue, includeAll) {
+                if (!selectEl) return;
+                const current = selectedValue || selectEl.value || (includeAll ? 'all' : getCategoryOptions()[0]);
+                selectEl.innerHTML = buildCategoryOptions(current, includeAll);
+                if (current && !Array.from(selectEl.options).some(o => o.value === current)) {
+                    const fallback = getCategoryOptions()[0] || 'Asymmetric';
+                    selectEl.value = fallback;
+                } else {
+                    selectEl.value = current;
+                }
+            }
+
+            function openCategoryManager() {
+                const overlay = document.getElementById('categoryManagerOverlay');
+                if (!overlay) return;
+                renderCategoryManager();
+                overlay.classList.add('show');
+            }
+
+            function closeCategoryManager() {
+                const overlay = document.getElementById('categoryManagerOverlay');
+                if (overlay) overlay.classList.remove('show');
+            }
+
+            function addCategoryEntry(rawName) {
+                const name = String(rawName || '').trim();
+                if (!name) return false;
+                const list = getCategoryOptions();
+                if (!list.includes(name)) {
+                    list.push(name);
+                    saveCategoryOptions(list);
+                    refreshCategorySelects();
+                    renderCategoryManager();
+                    return true;
+                }
+                return false;
+            }
+
+            function renameCategoryEntry(oldName, rawName) {
+                const oldValue = String(oldName || '').trim();
+                const newValue = String(rawName || '').trim();
+                if (!oldValue || !newValue || oldValue === newValue) return false;
+                const list = getCategoryOptions();
+                const idx = list.indexOf(oldValue);
+                if (idx >= 0) {
+                    list[idx] = newValue;
+                    saveCategoryOptions(list);
+                    tradesData.forEach(t => { if (t.category === oldValue) t.category = newValue; });
+                    refreshCategorySelects();
+                    renderCategoryManager();
+                    generateTable();
+                    return true;
+                }
+                return false;
+            }
+
+            function removeCategoryEntry(name) {
+                const value = String(name || '').trim();
+                if (!value) return false;
+                const defaults = new Set(DEFAULT_CATEGORIES);
+                if (defaults.has(value)) return false;
+                const list = getCategoryOptions().filter(v => v !== value);
+                saveCategoryOptions(list);
+                tradesData.forEach(t => { if (t.category === value) t.category = 'Asymmetric'; });
+                refreshCategorySelects();
+                renderCategoryManager();
+                generateTable();
+                return true;
+            }
+
+            function renderCategoryManager() {
+                const container = document.getElementById('categoryManagerList');
+                if (!container) return;
+                const list = getCategoryOptions();
+                container.innerHTML = list.map(cat => {
+                    const defaultCat = DEFAULT_CATEGORIES.includes(cat);
+                    return `
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                            <input type="text" value="${cat}" data-category-name="${cat}" style="flex:1; min-width:0;" ${defaultCat ? 'readonly' : ''}>
+                            ${defaultCat ? '<span style="font-size:11px;color:#666;">built-in</span>' : `<button type="button" onclick="renameCategoryEntry('${cat.replace(/'/g, "\\'")}', this.parentElement.querySelector('input').value)">Save</button><button type="button" class="btn-cancel" onclick="removeCategoryEntry('${cat.replace(/'/g, "\\'")}' )">Delete</button>`}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            function refreshCategorySelects() {
+                const selects = [
+                    document.getElementById('mainCategory'),
+                    document.getElementById('tradeCategory'),
+                    document.getElementById('csvDefaultCategory')
+                ];
+                const selectedMain = document.getElementById('mainCategory') ? document.getElementById('mainCategory').value : 'all';
+                const selectedTrade = document.getElementById('tradeCategory') ? document.getElementById('tradeCategory').value : 'Asymmetric';
+                const selectedCsv = document.getElementById('csvDefaultCategory') ? document.getElementById('csvDefaultCategory').value : 'Asymmetric';
+                selects.forEach(sel => {
+                    if (!sel) return;
+                    const isMain = sel.id === 'mainCategory';
+                    const nextValue = isMain ? selectedMain : sel.id === 'tradeCategory' ? selectedTrade : selectedCsv;
+                    renderCategorySelectOptions(sel, nextValue, isMain);
+                });
+                document.querySelectorAll('[data-role="category"]').forEach(sel => {
+                    const value = sel.value || (sel.dataset.fallback || 'all');
+                    renderCategorySelectOptions(sel, value, sel.id !== 'tradeCategory' && sel.id !== 'csvDefaultCategory' && sel.id !== 'mainCategory');
+                });
+            }
+
             function addDynamicTable(config, numId) {
                 const id = numId != null ? numId : dynamicIdCounter++;
                 if (id >= dynamicIdCounter) dynamicIdCounter = id + 1;
@@ -4005,11 +4152,10 @@
                         </label>
                         <label>Category:
                             <select data-role="category" onchange="renderDynamicTable(${id})">
-                                <option value="all" ${cfg.category==='all'?'selected':''}>All</option>
-                                <option value="Asymmetric" ${cfg.category==='Asymmetric'?'selected':''}>Asymmetric</option>
-                                <option value="Resource" ${cfg.category==='Resource'?'selected':''}>Resource</option>
+                                ${buildCategoryOptions(cfg.category || 'all', true)}
                             </select>
                         </label>
+                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
                         <div class="panel-col-dropdown">
                             <button onclick="togglePanelColMenu(${id}, event)" style="cursor:pointer;">Columns ▼</button>
                             <div class="panel-col-menu" id="dynColMenu_${id}">
@@ -4141,11 +4287,10 @@
                         </label>
                         <label>Category:
                             <select id="dynCategory_${id}" data-role="category" onchange="renderDynamicChart(${id})">
-                                <option value="all" ${cfg.category==='all'?'selected':''}>All</option>
-                                <option value="Asymmetric" ${cfg.category==='Asymmetric'?'selected':''}>Asymmetric</option>
-                                <option value="Resource" ${cfg.category==='Resource'?'selected':''}>Resource</option>
+                                ${buildCategoryOptions(cfg.category || 'all', true)}
                             </select>
                         </label>
+                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
                         <label>Status:
                             <select id="dynStatus_${id}" data-role="status" onchange="renderDynamicChart(${id})">
                                 <option value="all" ${cfg.status==='all'?'selected':''}>All</option>
@@ -4376,7 +4521,8 @@
                 document.getElementById('tradeModalOverlay').classList.add('show');
                 document.getElementById('tradeModalTitle').textContent = 'Add Trade';
                 document.getElementById('tradeSubmitBtn').textContent = 'Add Trade';
-                document.getElementById('tradeCategory').value = 'Asymmetric';
+                const defaultCat = getCategoryOptions()[0] || 'Asymmetric';
+                renderCategorySelectOptions(document.getElementById('tradeCategory'), defaultCat, false);
                 document.getElementById('tradeTicker').value = '';
                 document.getElementById('tradeTicker').disabled = false;
                 document.getElementById('tradeEntryDate').value = new Date().toISOString().slice(0, 10);
@@ -4417,7 +4563,8 @@
                 }
                 document.getElementById('tradeTicker').disabled = false;
                 document.getElementById('tickerLookupBtn').classList.remove('btn-lookup-empty');
-                document.getElementById('tradeCategory').value = trade.category || 'Asymmetric';
+                const currentCat = trade.category && getCategoryOptions().includes(trade.category) ? trade.category : (getCategoryOptions()[0] || 'Asymmetric');
+                renderCategorySelectOptions(document.getElementById('tradeCategory'), currentCat, false);
                 document.getElementById('tradeEntryDate').value = trade.entry_date;
                 document.getElementById('tradeQty').value = trade.quantity;
                 document.getElementById('tradeEntryPrice').value = trade.entry_price;
@@ -5323,6 +5470,9 @@
                     }
                 });
                 
+                refreshCategorySelects();
+                renderCategoryManager();
+
                 // CSV import (Schwab / Fidelity positions & history)
                 const importCsvInput = document.getElementById('importCsvFile');
                 if (importCsvInput) {
