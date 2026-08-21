@@ -1307,6 +1307,15 @@
                         <option value="all">All</option>
                     </select>
                 </label>
+                <label>Cashflow:
+                    <select id="mainCashflowStatus" data-role="cashflow-status" onchange="generateTable()">
+                        <option value="all" selected>All</option>
+                        <option value="none">No cashflow</option>
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                        <option value="mixed">Mixed</option>
+                    </select>
+                </label>
                 <label>Category:
                     <select id="mainCategory" data-role="category" onchange="generateTable()"></select>
                 </label>
@@ -1338,6 +1347,7 @@
                         <label><input type="checkbox" data-column="Value" checked onchange="generateTable()">Value</label>
                         <label><input type="checkbox" data-column="Gain" checked onchange="generateTable()">Gain</label>
                         <label><input type="checkbox" data-column="Day" checked onchange="generateTable()">Day</label>
+                        <label><input type="checkbox" data-column="Cashflow" checked onchange="generateTable()">Cashflow</label>
                         <label><input type="checkbox" data-column="Sell Order" checked onchange="generateTable()">Sell Order</label>
                         <label><input type="checkbox" data-column="Expires" checked onchange="generateTable()">Expires</label>
                         <label><input type="checkbox" data-column="Updated" checked onchange="generateTable()">Updated</label>
@@ -2533,6 +2543,27 @@
 
             function isTradeClosed(trade) {
                 return trade.exit_date !== null || isExpiredOption(trade);
+            }
+
+            function getNormalizedCashflowLegs(trade) {
+                if (!trade || !Array.isArray(trade.cashflow)) return [];
+                return trade.cashflow.filter(leg => leg && typeof leg === 'object');
+            }
+
+            function getTradeCashflowTotal(trade) {
+                if (!trade) return 0;
+                const legs = getNormalizedCashflowLegs(trade);
+                return legs.reduce((sum, leg) => sum + (Number(leg.premium ?? leg.amount ?? 0) || 0), 0);
+            }
+
+            function getTradeCashflowStatus(trade) {
+                const legs = getNormalizedCashflowLegs(trade);
+                if (!legs.length) return 'none';
+                const openLegs = legs.filter(leg => leg.exit_date == null && !isExpiredOption(leg)).length;
+                const closedLegs = legs.filter(leg => leg.exit_date != null || isExpiredOption(leg)).length;
+                if (openLegs && closedLegs) return 'mixed';
+                if (openLegs) return 'open';
+                return 'closed';
             }
 
             function getDaysToExpiration(trade) {
@@ -3964,9 +3995,9 @@
 
             // ===== Dynamic Table/Chart Elements =====
             let dynamicIdCounter = 1;
-            const allColumns = ['Entry Date','Trade','Symbol','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
-            const defaultDynCols = ['Entry Date','Trade','Category','Qty','Entry','Current','Profit','Basis','Value','Gain','Day','Sell Order','Expires','Updated','Age'];
-            const mobileDefaultDynCols = ['Symbol','Basis','Value','Gain','Day'];
+            const allColumns = ['Entry Date','Trade','Symbol','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Cashflow','Sell Order','Expires','Updated','Age'];
+            const defaultDynCols = ['Entry Date','Trade','Category','Qty','Entry','Current','Profit','Basis','Value','Gain','Day','Cashflow','Sell Order','Expires','Updated','Age'];
+            const mobileDefaultDynCols = ['Symbol','Basis','Value','Gain','Day','Cashflow'];
             let mainTableColumnProfiles = { mobile: null, desktop: null };
 
             function isMobileViewport() {
@@ -4531,6 +4562,7 @@
                 document.getElementById('tradeProfitExit').value = '';
                 document.getElementById('tradeLossExit').value = '';
                 document.getElementById('tradeEntryGoal').value = '';
+                document.getElementById('tradeCashflow').value = '';
                 document.getElementById('tradeExitDate').value = '';
                 document.getElementById('tradeExitPrice').value = '';
                 document.getElementById('tradeSellOrder').value = 'false';
@@ -4571,6 +4603,8 @@
                 document.getElementById('tradeProfitExit').value = trade.profit_exit || '';
                 document.getElementById('tradeLossExit').value = trade.loss_exit || '';
                 document.getElementById('tradeEntryGoal').value = trade.entry_goal || '';
+                const firstCashflow = Array.isArray(trade.cashflow) && trade.cashflow.length ? trade.cashflow[0] : null;
+                document.getElementById('tradeCashflow').value = firstCashflow && firstCashflow.premium != null ? firstCashflow.premium : '';
                 // Show exit fields for editing
                 document.getElementById('exitFields').style.display = '';
                 document.getElementById('tradeExitDate').value = trade.exit_date || '';
@@ -4600,6 +4634,7 @@
                 const profitExit = parseFloat(document.getElementById('tradeProfitExit').value) || null;
                 const lossExit = parseFloat(document.getElementById('tradeLossExit').value) || null;
                 const entryGoal = parseFloat(document.getElementById('tradeEntryGoal').value) || null;
+                const cashflowPremium = parseFloat(document.getElementById('tradeCashflow').value) || 0;
                 const exitDateVal = document.getElementById('tradeExitDate').value || null;
                 const exitPriceVal = parseFloat(document.getElementById('tradeExitPrice').value) || null;
                 const sellOrder = document.getElementById('tradeSellOrder').value === 'true';
@@ -4640,6 +4675,22 @@
                     trade.exit_price = exitPriceVal;
                     trade.sell_order_placed = sellOrder;
                     trade.account = account;
+                    if (cashflowPremium > 0) {
+                        trade.cashflow = [{
+                            type: trade.type,
+                            ticker: trade.ticker,
+                            expiration: trade.expiration || null,
+                            strike: trade.strike || null,
+                            option_type: trade.option_type || null,
+                            quantity: trade.quantity,
+                            premium: cashflowPremium,
+                            entry_date: entryDate,
+                            exit_date: null,
+                            account: account
+                        }];
+                    } else {
+                        trade.cashflow = [];
+                    }
                 } else {
                     const input = document.getElementById('tradeTicker').value;
                     const parsed = parseTicker(input);
@@ -4660,12 +4711,27 @@
                         loss_exit: lossExit,
                         sell_order_placed: false,
                         category: category,
-                        account: account
+                        account: account,
+                        cashflow: []
                     };
                     if (parsed.type === 'option') {
                         trade.expiration = parsed.expiration;
                         trade.strike = parsed.strike;
                         trade.option_type = parsed.option_type;
+                    }
+                    if (cashflowPremium > 0) {
+                        trade.cashflow.push({
+                            type: trade.type,
+                            ticker: trade.ticker,
+                            expiration: trade.expiration || null,
+                            strike: trade.strike || null,
+                            option_type: trade.option_type || null,
+                            quantity: trade.quantity,
+                            premium: cashflowPremium,
+                            entry_date: entryDate,
+                            exit_date: null,
+                            account: account
+                        });
                     }
                     tradesData.push(trade);
                 }
@@ -4785,6 +4851,8 @@
                 const absoluteGain = getAbsoluteGain(trade);
                 const percentGain = getPercentGain(trade);
                 const dailyGain = getDailyGain(trade);
+                const cashflowTotal = getTradeCashflowTotal(trade);
+                const cashflowStatus = getTradeCashflowStatus(trade);
                 const entryDate = new Date(trade.entry_date);
                 const daysToExp = getDaysToExpiration(trade);
                 const isClosed = isTradeClosed(trade);
@@ -4817,6 +4885,7 @@
                             <td class='right-align' data-col='Value' data-sort='${currentValue}'${hide('Value')}>${isLoading?sp:formatCurrency(currentValue)}</td>
                             <td class='right-align ${getRowClass(trade,'Gain',percentGain)}' data-col='Gain' data-sort='${percentGain}'${hide('Gain')}>${isLoading?sp:(formatCurrency(absoluteGain)+'<br>'+percentGain.toFixed(2)+'%')}</td>
                             <td class='right-align ${getRowClass(trade,'Day',dailyGain.percent)}' data-col='Day' data-sort='${dailyGain.percent}'${hide('Day')}>${isLoading?sp:(dailyGain.hasData===false&&!trade.exit_date?'N/A':formatCurrency(dailyGain.absolute))+'<br>'+(isLoading?'':(dailyGain.hasData===false&&!trade.exit_date?'N/A':dailyGain.percent.toFixed(2)+'%'))}</td>
+                            <td class='right-align' data-col='Cashflow' data-sort='${cashflowTotal}'${hide('Cashflow')}>${cashflowTotal ? `${formatCurrency(cashflowTotal)}<br><span style="font-size:10px;color:#666;">${cashflowStatus}</span>` : '—'}</td>
                             <td data-col='Sell Order' data-sort='${trade.sell_order_placed?1:0}'${hide('Sell Order')}>${trade.sell_order_placed?'Yes':'No'}</td>
                             <td class='${getRowClass(trade,'Expires')}' data-col='Expires' data-sort='${trade.type==='option'?new Date(trade.expiration).getTime():-1e12}'${hide('Expires')}>${daysToExp||''}</td>
                             <td data-col='Updated' data-sort='${mi2&&mi2.last_updated?mi2.last_updated:0}'${hide('Updated')}>${lastUp}</td>
@@ -4867,6 +4936,18 @@
                     filteredTrades = filteredTrades.filter(trade => trade.category === categoryVal);
                 }
 
+                const cashflowSel = document.getElementById('mainCashflowStatus');
+                const cashflowFilter = cashflowSel ? cashflowSel.value : 'all';
+                if (cashflowFilter === 'none') {
+                    filteredTrades = filteredTrades.filter(trade => getTradeCashflowStatus(trade) === 'none');
+                } else if (cashflowFilter === 'open') {
+                    filteredTrades = filteredTrades.filter(trade => getTradeCashflowStatus(trade) === 'open' || getTradeCashflowStatus(trade) === 'mixed');
+                } else if (cashflowFilter === 'closed') {
+                    filteredTrades = filteredTrades.filter(trade => getTradeCashflowStatus(trade) === 'closed');
+                } else if (cashflowFilter === 'mixed') {
+                    filteredTrades = filteredTrades.filter(trade => getTradeCashflowStatus(trade) === 'mixed');
+                }
+
                 // Read visible columns from inline column menu
                 const colMenu = document.getElementById('dynColMenu_main');
                 const visibleCols = colMenu
@@ -4886,11 +4967,12 @@
                     const basis = getCostBasis(trade);
                     const value = getCurrentValue(trade);
                     const dailyGain = getDailyGain(trade);
+                    const cashflowTotal = getTradeCashflowTotal(trade);
                     totalBasis += basis;
-                    totalValue += value;
+                    totalValue += value + cashflowTotal;
                     if (dailyGain.hasData || trade.exit_date) {
                         totalDayGain += dailyGain.absolute;
-                        totalYesterdayValue += value - dailyGain.absolute;
+                        totalYesterdayValue += (value + cashflowTotal) - dailyGain.absolute;
                         hasValidDayData = true;
                     }
                 });
