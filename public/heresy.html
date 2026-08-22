@@ -1437,6 +1437,13 @@
                         </div>
                     </div>
                     <div class="form-field">
+                        <label>Trade Type</label>
+                        <select id="tradeType">
+                            <option value="position">Position</option>
+                            <option value="cashflow">Cashflow / short premium</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
                         <label>Category</label>
                         <div style="display:flex; gap:6px; align-items:center;">
                             <select id="tradeCategory" style="flex:1;"></select>
@@ -1566,19 +1573,19 @@
                 if (optsOrExitDate != null && typeof optsOrExitDate === 'object') {
                     const o = optsOrExitDate;
                     return {
-                        type: "option", entry_date, ticker, expiration, strike, option_type, quantity, entry_price,
+                        type: "option", kind: "position", entry_date, ticker, expiration, strike, option_type, quantity, entry_price,
                         exit_date: o.exit_date ?? null, exit_price: o.exit_price ?? null, entry_goal: o.entry_goal ?? null,
                         profit_exit: o.profit_exit ?? null, loss_exit: o.loss_exit ?? null,
                         sell_order_placed: o.sell_order_placed ?? false, category: o.category ?? "Asymmetric",
-                        account: o.account ?? "Unknown"
+                        account: o.account ?? "Unknown", cashflow: Array.isArray(o.cashflow) ? o.cashflow : []
                     };
                 }
                 return {
-                    type: "option", entry_date, ticker, expiration, strike, option_type, quantity, entry_price,
+                    type: "option", kind: "position", entry_date, ticker, expiration, strike, option_type, quantity, entry_price,
                     exit_date: optsOrExitDate ?? null, exit_price: rest[0] ?? null, entry_goal: rest[1] ?? null,
                     profit_exit: rest[2] ?? null, loss_exit: rest[3] ?? null,
                     sell_order_placed: rest[4] ?? false, category: rest[5] ?? "Asymmetric",
-                    account: rest[6] ?? "Unknown"
+                    account: rest[6] ?? "Unknown", cashflow: []
                 };
             }
             
@@ -1586,19 +1593,19 @@
                 if (optsOrExitDate != null && typeof optsOrExitDate === 'object') {
                     const o = optsOrExitDate;
                     return {
-                        type: "stock", entry_date, ticker, quantity, entry_price,
+                        type: "stock", kind: "position", entry_date, ticker, quantity, entry_price,
                         exit_date: o.exit_date ?? null, exit_price: o.exit_price ?? null, entry_goal: o.entry_goal ?? null,
                         profit_exit: o.profit_exit ?? null, loss_exit: o.loss_exit ?? null,
                         sell_order_placed: o.sell_order_placed ?? false, category: o.category ?? "Asymmetric",
-                        account: o.account ?? "Unknown"
+                        account: o.account ?? "Unknown", cashflow: Array.isArray(o.cashflow) ? o.cashflow : []
                     };
                 }
                 return {
-                    type: "stock", entry_date, ticker, quantity, entry_price,
+                    type: "stock", kind: "position", entry_date, ticker, quantity, entry_price,
                     exit_date: optsOrExitDate ?? null, exit_price: rest[0] ?? null, entry_goal: rest[1] ?? null,
                     profit_exit: rest[2] ?? null, loss_exit: rest[3] ?? null,
                     sell_order_placed: rest[4] ?? false, category: rest[5] ?? "Asymmetric",
-                    account: rest[6] ?? "Unknown"
+                    account: rest[6] ?? "Unknown", cashflow: []
                 };
             }
 
@@ -1631,25 +1638,30 @@
                 });
             }
 
+            function isCashflowTrade(trade) {
+                return !!(trade && (trade.kind === 'cashflow' || trade.is_cashflow === true));
+            }
+
             function getTradeDisplay(trade) {
-                if (trade.type === 'stock') {
-                    return trade.ticker;
-                } else {
-                    let exp = trade.expiration;
-                    if (exp && exp.includes('-')) {
-                        const p = exp.split('-');
-                        exp = `${p[1]}/${p[2]}/${p[0]}`;
-                    }
-                    return `${trade.ticker} ${exp} ${trade.strike} ${trade.option_type}`;
-                }
+                const base = trade.type === 'stock'
+                    ? trade.ticker
+                    : (() => {
+                        let exp = trade.expiration;
+                        if (exp && exp.includes('-')) {
+                            const p = exp.split('-');
+                            exp = `${p[1]}/${p[2]}/${p[0]}`;
+                        }
+                        return `${trade.ticker} ${exp} ${trade.strike} ${trade.option_type}`;
+                    })();
+                return isCashflowTrade(trade) ? `${base} (cashflow)` : base;
             }
 
             function getCostBasis(trade) {
+                const direction = isCashflowTrade(trade) ? -1 : 1;
                 if (trade.type === 'stock') {
-                    return trade.entry_price * trade.quantity;
+                    return trade.entry_price * trade.quantity * direction;
                 } else {
-                    // Options: entry_price * quantity_contracts * 100
-                    return trade.entry_price * trade.quantity * 100;
+                    return trade.entry_price * trade.quantity * 100 * direction;
                 }
             }
 
@@ -1695,12 +1707,12 @@
                 }
                 
                 if (currentPrice === null) return null;
-                
+
+                const direction = isCashflowTrade(trade) ? -1 : 1;
                 if (trade.type === 'stock') {
-                    return currentPrice * trade.quantity;
+                    return currentPrice * trade.quantity * direction;
                 } else {
-                    // Options: current_price * quantity_contracts * 100
-                    return currentPrice * trade.quantity * 100;
+                    return currentPrice * trade.quantity * 100 * direction;
                 }
             }
 
@@ -3383,7 +3395,8 @@
                     if (!parsed) continue;
                     const action = (r[csvColIdx(cols, 'Action')] || '').trim().toLowerCase();
                     let kind = 'other';
-                    if (/buy to open/.test(action)) kind = 'open';
+                    if (/sell to open/.test(action)) kind = 'cashflow_open';
+                    else if (/buy to open/.test(action)) kind = 'open';
                     else if (/sell to close/.test(action)) kind = 'close';
                     else if (/^buy/.test(action)) kind = 'open';
                     else if (/^sell/.test(action)) kind = 'close';
@@ -3430,12 +3443,15 @@
                     if ((r[0] || '').trim() === 'Run Date') { cols = r.map(x => x.trim()); continue; }
                     if (!cols) continue;
                     const action = (r[csvColIdx(cols, 'Action')] || '').trim();
+                    const desc = (r[csvColIdx(cols, 'Description')] || '').trim();
                     let kind = null;
                     if (/YOU BOUGHT/i.test(action)) kind = 'open';
-                    else if (/YOU SOLD/i.test(action)) kind = 'close';
+                    else if (/YOU SOLD/i.test(action)) {
+                        if (/OPEN(?:ING)?/i.test(action) || /OPEN(?:ING)?/i.test(desc)) kind = 'cashflow_open';
+                        else kind = 'close';
+                    }
                     else continue;
                     const symbol = (r[csvColIdx(cols, 'Symbol')] || '').trim();
-                    const desc = (r[csvColIdx(cols, 'Description')] || '').trim();
                     if (!symbol) continue;
                     let parsed;
                     if (symbol.startsWith('-') || /\bCALL\b|\bPUT\b/i.test(desc)) parsed = parseFidelityOption(symbol, desc);
@@ -3631,6 +3647,132 @@
             }
             function csvIsUnassigned(a) { const s = (a || '').trim().toLowerCase(); return s === '' || s === 'unknown'; }
 
+            function isTacticalCashflowTrade(trade) {
+                if (!trade) return false;
+                return String(trade.category || '').trim().toLowerCase() === 'tactical cashflow';
+            }
+
+            function parseIsoDateSafe(s) {
+                if (!s) return null;
+                const d = new Date(s);
+                return isNaN(d.getTime()) ? null : d;
+            }
+
+            function isEligibleCashflowParentTrade(parent, tx) {
+                if (!parent || !tx) return false;
+                if (isTradeClosed(parent)) return false;
+                if (isCashflowTrade(parent)) return false;
+                if (String(parent.ticker || '').trim().toUpperCase() !== String(tx.ticker || '').trim().toUpperCase()) return false;
+
+                // For option-on-option cashflow, prefer a parent with later expiration.
+                if (parent.type === 'option' && tx.type === 'option') {
+                    const parentExp = parseIsoDateSafe(parent.expiration);
+                    const shortExp = parseIsoDateSafe(tx.expiration);
+                    if (parentExp && shortExp && parentExp.getTime() <= shortExp.getTime()) return false;
+                }
+                return true;
+            }
+
+            function scoreCashflowParentTrade(parent, tx) {
+                let score = 0;
+                if (isTacticalCashflowTrade(parent)) score += 60;
+                if (parent.type === tx.type) score += 20;
+                if (csvSameAccount(parent.account || '', tx.account || '')) score += 15;
+
+                if (parent.type === 'option' && tx.type === 'option') {
+                    const parentExp = parseIsoDateSafe(parent.expiration);
+                    const shortExp = parseIsoDateSafe(tx.expiration);
+                    if (parentExp && shortExp) {
+                        const dteGap = Math.floor((parentExp.getTime() - shortExp.getTime()) / (1000 * 60 * 60 * 24));
+                        if (dteGap > 0) score += Math.min(40, Math.floor(dteGap / 7));
+                    }
+                }
+
+                const parentEntry = parseIsoDateSafe(parent.entry_date);
+                const txDate = parseIsoDateSafe(tx.date);
+                if (parentEntry && txDate && parentEntry.getTime() <= txDate.getTime()) score += 10;
+                return score;
+            }
+
+            function buildVirtualParentFromAddAction(addAction, planIdx) {
+                if (!addAction || addAction.kind !== 'add' || !addAction.holding) return null;
+                return {
+                    type: addAction.holding.type,
+                    ticker: addAction.holding.ticker,
+                    expiration: addAction.holding.expiration || null,
+                    strike: addAction.holding.strike || null,
+                    option_type: addAction.holding.option_type || null,
+                    account: addAction.account || '',
+                    category: document.getElementById('csvDefaultCategory')?.value || 'Asymmetric',
+                    entry_date: addAction.entryDate || new Date().toISOString().slice(0, 10),
+                    exit_date: null,
+                    kind: 'position',
+                    __planIdx: planIdx
+                };
+            }
+
+            function collectCashflowParentCandidates(actions) {
+                const out = [];
+                tradesData.forEach((t, idx) => out.push({ t, appIdx: idx, parentPlanIdx: null }));
+                actions.forEach((a, i) => {
+                    const vt = buildVirtualParentFromAddAction(a, i);
+                    if (vt) out.push({ t: vt, appIdx: null, parentPlanIdx: i });
+                });
+                return out;
+            }
+
+            function findBestCashflowParent(tx, actions = []) {
+                const ranked = collectCashflowParentCandidates(actions)
+                    .filter(x => isEligibleCashflowParentTrade(x.t, tx))
+                    .map(x => ({ ...x, score: scoreCashflowParentTrade(x.t, tx) }))
+                    .sort((a, b) => b.score - a.score);
+
+                if (!ranked.length) return { kind: 'none' };
+                if (ranked.length > 1 && ranked[0].score === ranked[1].score) {
+                    return { kind: 'ambiguous', count: ranked.length, best: ranked[0], tied: ranked.filter(r => r.score === ranked[0].score).length };
+                }
+                return { kind: 'match', best: ranked[0] };
+            }
+
+            function csvTxnToCashflowLeg(tx, accountHint) {
+                if (!tx) return null;
+                const mult = tx.type === 'option' ? 100 : 1;
+                const qty = Number(tx.quantity || 0);
+                const px = Number(tx.price || 0);
+                const premium = qty > 0 && px > 0 ? csvRound2(qty * px * mult) : 0;
+                return {
+                    type: tx.type,
+                    ticker: tx.ticker,
+                    expiration: tx.expiration || null,
+                    strike: tx.strike || null,
+                    option_type: tx.option_type || null,
+                    quantity: qty,
+                    premium,
+                    entry_date: tx.date || new Date().toISOString().slice(0, 10),
+                    exit_date: null,
+                    account: tx.account || accountHint || '',
+                    source: tx.source || 'CSV'
+                };
+            }
+
+            function cashflowLegMatches(a, b) {
+                if (!a || !b) return false;
+                const sameType = String(a.type || '') === String(b.type || '');
+                const sameTicker = String(a.ticker || '').toUpperCase() === String(b.ticker || '').toUpperCase();
+                const sameExp = csvNormExp(a.expiration) === csvNormExp(b.expiration);
+                const sameStrike = Number(a.strike || 0) === Number(b.strike || 0);
+                const sameOpt = String(a.option_type || '').toUpperCase() === String(b.option_type || '').toUpperCase();
+                const sameQty = Number(a.quantity || 0) === Number(b.quantity || 0);
+                const sameDate = String(a.entry_date || '') === String(b.entry_date || '');
+                const samePremium = Math.abs(Number(a.premium || 0) - Number(b.premium || 0)) < 0.01;
+                return sameType && sameTicker && sameExp && sameStrike && sameOpt && sameQty && sameDate && samePremium;
+            }
+
+            function tradeAlreadyHasCashflowLeg(trade, leg) {
+                const legs = getNormalizedCashflowLegs(trade);
+                return legs.some(existing => cashflowLegMatches(existing, leg));
+            }
+
             function buildCsvPlan() {
                 const separateAccounts = document.getElementById('csvMatchAccount').checked;
                 // Broker holdings grouped by identity (+ broker account, from the CSV source: Schwab/Fidelity).
@@ -3729,6 +3871,64 @@
                         }
                     });
                 });
+
+                // Cashflow short-premium events from transaction history.
+                // Attach sell-to-open rows to open parent trades by symbol, preferring
+                // Tactical Cashflow category and option parents with later expiration.
+                const cashflowTxns = csvImportState.transactions.filter(t => t.action === 'cashflow_open');
+                cashflowTxns.forEach(tx => {
+                    const leg = csvTxnToCashflowLeg(tx, tx.account || tx.source || '');
+                    if (!leg || !(leg.premium > 0)) return;
+                    const parentMatch = findBestCashflowParent(tx, actions);
+                    if (parentMatch.kind === 'none') {
+                        actions.push({
+                            kind: 'cashflow_unmatched',
+                            label: csvLabel(tx),
+                            account: tx.account || tx.source || '',
+                            quantity: tx.quantity,
+                            entryDate: leg.entry_date,
+                            premium: leg.premium,
+                            note: 'No open long-term parent trade found with same symbol'
+                        });
+                        return;
+                    }
+                    if (parentMatch.kind === 'ambiguous') {
+                        actions.push({
+                            kind: 'cashflow_ambiguous',
+                            label: csvLabel(tx),
+                            account: tx.account || tx.source || '',
+                            quantity: tx.quantity,
+                            entryDate: leg.entry_date,
+                            premium: leg.premium,
+                            note: `Multiple parent matches for ${tx.ticker} (top score tie across ${parentMatch.tied})`
+                        });
+                        return;
+                    }
+                    const target = parentMatch.best;
+                    if (tradeAlreadyHasCashflowLeg(target.t, leg)) {
+                        actions.push({
+                            kind: 'cashflow_ok',
+                            label: csvLabel(tx),
+                            account: tx.account || tx.source || '',
+                            quantity: tx.quantity,
+                            entryDate: leg.entry_date,
+                            premium: leg.premium
+                        });
+                        return;
+                    }
+                    actions.push({
+                        kind: 'cashflow_add',
+                        label: csvLabel(tx),
+                        account: tx.account || tx.source || '',
+                        quantity: tx.quantity,
+                        entryDate: leg.entry_date,
+                        premium: leg.premium,
+                        appIdx: target.appIdx,
+                        parentPlanIdx: target.parentPlanIdx,
+                        targetLabel: getTradeDisplay(target.t),
+                        leg
+                    });
+                });
                 return actions;
             }
 
@@ -3750,10 +3950,13 @@
                 const adds = plan.filter(a => a.kind === 'add');
                 const updates = plan.filter(a => a.kind === 'update');
                 const closes = plan.filter(a => a.kind === 'close');
+                const cashflowAdds = plan.filter(a => a.kind === 'cashflow_add');
                 const oks = plan.filter(a => a.kind === 'ok');
+                const cashflowOk = plan.filter(a => a.kind === 'cashflow_ok');
                 const appOnly = plan.filter(a => a.kind === 'appOnly');
+                const cashflowUnmatched = plan.filter(a => a.kind === 'cashflow_unmatched' || a.kind === 'cashflow_ambiguous');
                 const defCat = document.getElementById('csvDefaultCategory').value;
-                const changes = [...adds, ...updates, ...closes];
+                const changes = [...adds, ...updates, ...closes, ...cashflowAdds];
                 const badge = (txt, color) => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;color:#fff;background:${color};">${txt}</span>`;
                 const acctCell = a => a.accountChange ? `${esc(a.appAccount) || '<i>none</i>'} → <b>${esc(a.account)}</b>` : esc(a.account);
                 let html = '';
@@ -3807,6 +4010,17 @@
                                 <td>${a.exitDate || ''}</td>
                                 <td><span style="color:#888">mark closed (from history)</span></td>
                             </tr>`;
+                        } else if (a.kind === 'cashflow_add') {
+                            html += `<tr>
+                                <td><input type="checkbox" class="csv-apply" data-idx="${i}" checked></td>
+                                <td>${badge('CASHFLOW', '#1565c0')}</td>
+                                <td>${esc(a.label)}</td>
+                                <td>${esc(a.account)}</td>
+                                <td>${a.quantity}</td>
+                                <td><b>${money(a.premium)}</b></td>
+                                <td>${a.entryDate || ''}</td>
+                                <td><span style="color:#444;">attach to <b>${esc(a.targetLabel)}</b></span></td>
+                            </tr>`;
                         }
                     });
                     html += '</tbody></table>';
@@ -3815,7 +4029,14 @@
                 }
                 if (appOnly.length) html += `<div style="margin:14px 0 4px;font-weight:bold;">❓ In app, not in broker positions (${appOnly.length})</div>
                     <table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>${appOnly.map(a => `<tr><td style="padding:3px 6px;">${esc(a.label)}</td><td style="padding:3px 6px;">${a.quantity}</td><td style="padding:3px 6px;color:#888;">${esc(a.account)} — possibly closed, or a different account</td></tr>`).join('')}</tbody></table>`;
-                if (oks.length) html += `<div style="margin:10px 0;color:#2e7d32;">✅ ${oks.length} holding${oks.length === 1 ? '' : 's'} already match.</div>`;
+                if (cashflowUnmatched.length) {
+                    html += `<div style="margin:14px 0 4px;font-weight:bold;color:#c62828;">⚠ Cashflow events needing manual review (${cashflowUnmatched.length})</div>
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>${cashflowUnmatched.map(a => `<tr><td style="padding:3px 6px;">${esc(a.label)}</td><td style="padding:3px 6px;">${money(a.premium)}</td><td style="padding:3px 6px;color:#888;">${esc(a.note || '')}</td></tr>`).join('')}</tbody></table>`;
+                }
+                if (oks.length || cashflowOk.length) {
+                    const totalOk = oks.length + cashflowOk.length;
+                    html += `<div style="margin:10px 0;color:#2e7d32;">✅ ${totalOk} item${totalOk === 1 ? '' : 's'} already match.</div>`;
+                }
                 el.innerHTML = html;
                 const selAll = document.getElementById('csvSelectAll');
                 if (selAll) selAll.addEventListener('change', () => {
@@ -3827,7 +4048,8 @@
             }
 
             function applyCsvImport() {
-                const plan = csvImportState.plan || []; let added = 0, updated = 0, closed = 0;
+                const plan = csvImportState.plan || []; let added = 0, updated = 0, closed = 0, cashflowAdded = 0;
+                const createdByPlanIdx = new Map();
                 document.querySelectorAll('#csvReview input.csv-apply:checked').forEach(cb => {
                     const a = plan[+cb.dataset.idx]; if (!a) return;
                     if (a.kind === 'add') {
@@ -3835,7 +4057,9 @@
                         const cat = sel ? sel.value : document.getElementById('csvDefaultCategory').value;
                         const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || new Date().toISOString().slice(0, 10), exit_date: null, exit_price: null, entry_goal: null, profit_exit: a.targetProfit ?? null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
                         if (a.holding.type === 'option') { trade.expiration = a.holding.expiration; trade.strike = Number(a.holding.strike); trade.option_type = a.holding.option_type; }
-                        tradesData.push(trade); added++;
+                        tradesData.push(trade);
+                        createdByPlanIdx.set(+cb.dataset.idx, tradesData.length - 1);
+                        added++;
                     } else if (a.kind === 'update' && a.singleLot) {
                         const t = tradesData[a.appIdx];
                         if (t) {
@@ -3849,12 +4073,23 @@
                     } else if (a.kind === 'close') {
                         const t = tradesData[a.appIdx];
                         if (t) { if (a.exitDate) t.exit_date = a.exitDate; if (a.exitPrice != null) t.exit_price = csvRound2(a.exitPrice); closed++; }
+                    } else if (a.kind === 'cashflow_add') {
+                        let targetIdx = a.appIdx;
+                        if (targetIdx == null && a.parentPlanIdx != null) targetIdx = createdByPlanIdx.get(a.parentPlanIdx);
+                        const t = targetIdx != null ? tradesData[targetIdx] : null;
+                        if (t && a.leg) {
+                            if (!Array.isArray(t.cashflow)) t.cashflow = [];
+                            if (!tradeAlreadyHasCashflowLeg(t, a.leg)) {
+                                t.cashflow.push(a.leg);
+                                cashflowAdded++;
+                            }
+                        }
                     }
                 });
                 saveState(); generateTable();
                 Object.keys(dynamicPanelConfigs).forEach(pid => { const n = parseInt(pid.replace('dynPanel_', '')); if (!isNaN(n) && dynamicPanelConfigs[pid].type === 'table') renderDynamicTable(n); });
                 closeCsvImportModal();
-                alert(`CSV import complete: ${added} added, ${updated} updated, ${closed} closed.`);
+                alert(`CSV import complete: ${added} added, ${updated} updated, ${closed} closed, ${cashflowAdded} cashflow legs attached.`);
             }
 
             // ===== Summary Section =====
@@ -4554,6 +4789,7 @@
                 document.getElementById('tradeSubmitBtn').textContent = 'Add Trade';
                 const defaultCat = getCategoryOptions()[0] || 'Asymmetric';
                 renderCategorySelectOptions(document.getElementById('tradeCategory'), defaultCat, false);
+                document.getElementById('tradeType').value = 'position';
                 document.getElementById('tradeTicker').value = '';
                 document.getElementById('tradeTicker').disabled = false;
                 document.getElementById('tradeEntryDate').value = new Date().toISOString().slice(0, 10);
@@ -4597,6 +4833,7 @@
                 document.getElementById('tickerLookupBtn').classList.remove('btn-lookup-empty');
                 const currentCat = trade.category && getCategoryOptions().includes(trade.category) ? trade.category : (getCategoryOptions()[0] || 'Asymmetric');
                 renderCategorySelectOptions(document.getElementById('tradeCategory'), currentCat, false);
+                document.getElementById('tradeType').value = isCashflowTrade(trade) ? 'cashflow' : 'position';
                 document.getElementById('tradeEntryDate').value = trade.entry_date;
                 document.getElementById('tradeQty').value = trade.quantity;
                 document.getElementById('tradeEntryPrice').value = trade.entry_price;
@@ -4604,7 +4841,8 @@
                 document.getElementById('tradeLossExit').value = trade.loss_exit || '';
                 document.getElementById('tradeEntryGoal').value = trade.entry_goal || '';
                 const firstCashflow = Array.isArray(trade.cashflow) && trade.cashflow.length ? trade.cashflow[0] : null;
-                document.getElementById('tradeCashflow').value = firstCashflow && firstCashflow.premium != null ? firstCashflow.premium : '';
+                const cashflowValue = firstCashflow && firstCashflow.premium != null ? Math.abs(firstCashflow.premium) : (trade.kind === 'cashflow' ? Math.abs(Number(trade.entry_price || 0)) : '');
+                document.getElementById('tradeCashflow').value = cashflowValue;
                 // Show exit fields for editing
                 document.getElementById('exitFields').style.display = '';
                 document.getElementById('tradeExitDate').value = trade.exit_date || '';
@@ -4631,6 +4869,7 @@
                 const qty = parseFloat(document.getElementById('tradeQty').value);
                 const entryPrice = parseFloat(document.getElementById('tradeEntryPrice').value);
                 const category = document.getElementById('tradeCategory').value;
+                const tradeType = document.getElementById('tradeType').value;
                 const profitExit = parseFloat(document.getElementById('tradeProfitExit').value) || null;
                 const lossExit = parseFloat(document.getElementById('tradeLossExit').value) || null;
                 const entryGoal = parseFloat(document.getElementById('tradeEntryGoal').value) || null;
@@ -4666,8 +4905,8 @@
                     }
                     trade.entry_date = entryDate;
                     trade.quantity = qty;
-                    trade.entry_price = entryPrice;
                     trade.category = category;
+                    trade.kind = tradeType === 'cashflow' ? 'cashflow' : 'position';
                     trade.profit_exit = profitExit;
                     trade.loss_exit = lossExit;
                     trade.entry_goal = entryGoal;
@@ -4675,7 +4914,16 @@
                     trade.exit_price = exitPriceVal;
                     trade.sell_order_placed = sellOrder;
                     trade.account = account;
-                    if (cashflowPremium > 0) {
+                    if (tradeType === 'cashflow' && cashflowPremium > 0) {
+                        trade.entry_price = -Math.abs(cashflowPremium);
+                        trade.kind = 'cashflow';
+                    } else if (tradeType === 'cashflow') {
+                        trade.entry_price = entryPrice;
+                        trade.kind = 'cashflow';
+                    } else {
+                        trade.entry_price = entryPrice;
+                    }
+                    if (tradeType === 'cashflow' && cashflowPremium > 0) {
                         trade.cashflow = [{
                             type: trade.type,
                             ticker: trade.ticker,
@@ -4703,7 +4951,7 @@
                         entry_date: entryDate,
                         ticker: parsed.ticker,
                         quantity: qty,
-                        entry_price: entryPrice,
+                        entry_price: tradeType === 'cashflow' && cashflowPremium > 0 ? -Math.abs(cashflowPremium) : entryPrice,
                         exit_date: null,
                         exit_price: null,
                         entry_goal: entryGoal,
@@ -4712,6 +4960,7 @@
                         sell_order_placed: false,
                         category: category,
                         account: account,
+                        kind: tradeType === 'cashflow' ? 'cashflow' : 'position',
                         cashflow: []
                     };
                     if (parsed.type === 'option') {
@@ -4719,7 +4968,7 @@
                         trade.strike = parsed.strike;
                         trade.option_type = parsed.option_type;
                     }
-                    if (cashflowPremium > 0) {
+                    if (tradeType === 'cashflow' && cashflowPremium > 0) {
                         trade.cashflow.push({
                             type: trade.type,
                             ticker: trade.ticker,
