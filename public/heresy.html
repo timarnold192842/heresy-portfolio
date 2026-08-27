@@ -20,6 +20,11 @@
                     <label>Date To:
                         <input id="mainDateTo" type="date" onchange="generateTable()" style="font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; margin-left: 4px;">
                     </label>
+                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('1M')" style="padding:4px 8px; font-size:11px;">Last Month</button>
+                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('6M')" style="padding:4px 8px; font-size:11px;">Last 6 Months</button>
+                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('1Y')" style="padding:4px 8px; font-size:11px;">Last 1 Year</button>
+                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('2Y')" style="padding:4px 8px; font-size:11px;">Last 2 Years</button>
+                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('ALL')" style="padding:4px 8px; font-size:11px;">All Time</button>
                     <button type="button" class="small-panel-btn" onclick="clearMainDateRange()" style="padding:4px 8px; font-size:11px;">Clear Dates</button>
                 </div>
 
@@ -2369,7 +2374,7 @@
                 console.log('Fetching historical data for stocks:', Array.from(stocks));
                 console.log('Fetching historical data for options:', Array.from(options));
                 
-                const total = stocks.size + options.size;
+                const total = stocks.size + options.size + 1;
                 let done = 0;
                 const tick = () => { done++; if (typeof onProgress === 'function') onProgress(done, total); };
                 if (typeof onProgress === 'function') onProgress(0, total);
@@ -2381,8 +2386,9 @@
                 const optionPromises = Array.from(options).map(optionTicker => 
                     fetchHistoricalOptionData(optionTicker, fromDateStr, toDateStr).finally(tick)
                 );
+                const benchmarkPromise = fetchHistoricalStockData(SP500_BENCHMARK_TICKER, fromDateStr, toDateStr).finally(tick);
                 
-                await Promise.all([...stockPromises, ...optionPromises]);
+                await Promise.all([...stockPromises, ...optionPromises, benchmarkPromise]);
                 
                 return { fromDate: fromDateStr, toDate: toDateStr, filteredTrades };
             }
@@ -2734,6 +2740,106 @@
             function getMainDateRangeKey() {
                 const { fromValue, toValue } = getMainDateRange();
                 return `${fromValue || ''}|${toValue || ''}`;
+            }
+
+            function toDateInputValue(date) {
+                const d = new Date(date);
+                d.setHours(0, 0, 0, 0);
+                return d.toISOString().split('T')[0];
+            }
+
+            function setMainDatePreset(preset) {
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                if (!dateFromInput || !dateToInput) return;
+
+                if (preset === 'ALL') {
+                    dateFromInput.value = '';
+                    dateToInput.value = '';
+                    generateTable();
+                    return;
+                }
+
+                const toDate = new Date();
+                toDate.setHours(0, 0, 0, 0);
+                const fromDate = new Date(toDate);
+                if (preset === '1M') fromDate.setMonth(fromDate.getMonth() - 1);
+                else if (preset === '6M') fromDate.setMonth(fromDate.getMonth() - 6);
+                else if (preset === '1Y') fromDate.setFullYear(fromDate.getFullYear() - 1);
+                else if (preset === '2Y') fromDate.setFullYear(fromDate.getFullYear() - 2);
+
+                dateFromInput.value = toDateInputValue(fromDate);
+                dateToInput.value = toDateInputValue(toDate);
+                generateTable();
+            }
+
+            function getEarliestTradeDateString() {
+                let earliestTs = null;
+                tradesData.forEach(trade => {
+                    const ts = parseTradeFilterDate(trade.entry_date);
+                    if (ts == null) return;
+                    if (earliestTs == null || ts < earliestTs) earliestTs = ts;
+                });
+                return earliestTs == null ? null : toDateInputValue(new Date(earliestTs));
+            }
+
+            function getMainDateRangeBounds() {
+                const { fromValue, toValue } = getMainDateRange();
+                const today = toDateInputValue(new Date());
+                return {
+                    fromDate: fromValue || getEarliestTradeDateString() || today,
+                    toDate: toValue || today
+                };
+            }
+
+            const SP500_BENCHMARK_TICKER = 'SPY';
+
+            async function ensureBenchmarkHistoryForMainRange() {
+                const { fromDate, toDate } = getMainDateRangeBounds();
+                try {
+                    await fetchHistoricalStockData(SP500_BENCHMARK_TICKER, fromDate, toDate);
+                    renderSummary();
+                } catch (e) {
+                    console.warn('Failed to refresh benchmark history for current range:', e);
+                }
+            }
+
+            function getBenchmarkSummaryMetrics() {
+                const prices = historicalData[SP500_BENCHMARK_TICKER] || {};
+                const { fromDate, toDate } = getMainDateRangeBounds();
+                const startPrice = getPriceOnOrBefore(fromDate, prices);
+                const endPrice = getPriceOnOrBefore(toDate, prices);
+
+                let previousPrice = null;
+                const candidates = Object.keys(prices).filter(d => d < toDate).sort();
+                if (candidates.length) {
+                    previousPrice = prices[candidates[candidates.length - 1]];
+                }
+
+                const hasReturn = startPrice != null && endPrice != null && startPrice !== 0;
+                const hasDay = previousPrice != null && endPrice != null && previousPrice !== 0;
+
+                return {
+                    hasReturn,
+                    hasDay,
+                    returnPct: hasReturn ? ((endPrice - startPrice) / startPrice) * 100 : 0,
+                    dayPct: hasDay ? ((endPrice - previousPrice) / previousPrice) * 100 : 0
+                };
+            }
+
+            function calculateBenchmarkOverlayValues(dateRange, portfolioValues) {
+                const prices = historicalData[SP500_BENCHMARK_TICKER] || {};
+                const spySeries = dateRange.map(dateStr => getPriceOnOrBefore(dateStr, prices));
+                let anchorIdx = -1;
+                for (let i = 0; i < dateRange.length; i++) {
+                    if (spySeries[i] != null && spySeries[i] !== 0 && portfolioValues[i] != null && portfolioValues[i] !== 0) {
+                        anchorIdx = i;
+                        break;
+                    }
+                }
+                if (anchorIdx === -1) return null;
+                const scale = portfolioValues[anchorIdx] / spySeries[anchorIdx];
+                return spySeries.map(v => (v == null ? null : v * scale));
             }
 
             function clearMainDateRange() {
@@ -4202,6 +4308,7 @@
             }
 
             function summaryLabel(entry) {
+                if (entry.type === 'sp500') return 'S&P 500';
                 const s = entry.status === 'all' ? '' : entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
                 const c = entry.category === 'all' ? '' : entry.category;
                 return [s, c].filter(Boolean).join(' · ') || 'All';
@@ -4219,10 +4326,40 @@
                 return trades.some(t => !isTradeClosed(t) && refreshingKeys.has(getTradeMarketKey(t)));
             }
 
+            function summaryIsBenchmarkRefreshing() {
+                return !!(refreshingKeys && refreshingKeys.has(SP500_BENCHMARK_TICKER));
+            }
+
             function renderSummary() {
                 const container = document.getElementById('summaryCards');
                 if (!container) return;
                 container.innerHTML = summaryEntries.map(entry => {
+                    if (entry.type === 'sp500') {
+                        const bm = getBenchmarkSummaryMetrics();
+                        const returnCls = bm.returnPct >= 0 ? 'positive' : 'negative';
+                        const dayCls = bm.dayPct >= 0 ? 'positive' : 'negative';
+                        const displayName = entry.customName || summaryLabel(entry);
+                        const isRefreshing = summaryIsBenchmarkRefreshing();
+                        const sp = '<span class="cell-spinner">\u21bb</span>';
+                        const returnVal = isRefreshing ? sp : (bm.hasReturn ? `${bm.returnPct.toFixed(2)}%` : 'N/A');
+                        const dayVal = isRefreshing ? sp : (bm.hasDay ? `${bm.dayPct.toFixed(2)}%` : 'N/A');
+                        return `<div class="summary-card" draggable="true" data-entry-id="${entry.id}">
+                            <div class="card-label">
+                                <span class="card-label-text" data-entry-id="${entry.id}">${displayName}</span>
+                                <button class="remove-card" onclick="removeSummaryEntry(${entry.id})">×</button>
+                            </div>
+                            <div class="card-metrics">
+                                <div class="card-metric">
+                                    <span class="metric-label">Return</span>
+                                    <span class="metric-value ${returnCls}">${returnVal}</span>
+                                </div>
+                                <div class="card-metric">
+                                    <span class="metric-label">Day</span>
+                                    <span class="metric-value ${dayCls}">${dayVal}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                    }
                     const d = calculateSummaryForFilter(entry.status, entry.category);
                     const gCls = d.gain >= 0 ? 'positive' : 'negative';
                     const dCls = d.dayGain >= 0 ? 'positive' : 'negative';
@@ -4265,6 +4402,12 @@
                     popover = document.createElement('div');
                     popover.className = 'add-popover';
                     popover.innerHTML = `
+                        <label>Type
+                            <select id="summaryAddType">
+                                <option value="portfolio" selected>Portfolio</option>
+                                <option value="sp500">S&P 500 Benchmark</option>
+                            </select>
+                        </label>
                         <label>Status
                             <select id="summaryAddStatus">
                                 <option value="all">All</option>
@@ -4282,9 +4425,16 @@
                 document.addEventListener('click', () => { if (popover) { popover.remove(); popover = null; } });
             }
             function doAddSummary() {
+                const type = document.getElementById('summaryAddType').value;
                 const status = document.getElementById('summaryAddStatus').value;
                 const category = document.getElementById('summaryAddCategory').value;
-                summaryEntries.push({ id: summaryIdCounter++, status, category });
+                const entry = { id: summaryIdCounter++, status, category };
+                if (type === 'sp500') {
+                    entry.type = 'sp500';
+                    entry.status = 'all';
+                    entry.category = 'all';
+                }
+                summaryEntries.push(entry);
                 const pop = document.querySelector('.add-popover');
                 if (pop) pop.remove();
                 renderSummary();
@@ -4681,20 +4831,25 @@
                         return;
                     }
                     const { dateRange, portfolioValues, costBasisValues } = calculatePortfolioValues(fromDate, toDate, filteredTrades);
+                    const benchmarkValues = calculateBenchmarkOverlayValues(dateRange, portfolioValues);
                     const canvas = document.getElementById(`dynCanvas_${id}`);
                     if (!canvas) return;
                     if (dynamicCharts[id]) dynamicCharts[id].destroy();
                     const labels = dateRange.map(d => typeof d === 'string' ? new Date(d) : d);
                     const catLabel = category === 'all' ? 'All categories' : category;
                     const statLabel = status === 'all' ? 'All' : (status.charAt(0).toUpperCase() + status.slice(1));
+                    const datasets = [
+                        { label: 'Portfolio Value', data: portfolioValues, borderColor: '#007acc', backgroundColor: 'rgba(0,122,204,0.1)', fill: true, tension: 0.1, pointRadius: 0 },
+                        { label: 'Cost Basis', data: costBasisValues, borderColor: '#999', borderDash: [5,5], fill: false, tension: 0.1, pointRadius: 0 }
+                    ];
+                    if (benchmarkValues) {
+                        datasets.push({ label: 'S&P 500 (scaled)', data: benchmarkValues, borderColor: '#ef6c00', borderDash: [8, 4], fill: false, tension: 0.1, pointRadius: 0 });
+                    }
                     dynamicCharts[id] = new Chart(canvas.getContext('2d'), {
                         type: 'line',
                         data: {
                             labels,
-                            datasets: [
-                                { label: 'Portfolio Value', data: portfolioValues, borderColor: '#007acc', backgroundColor: 'rgba(0,122,204,0.1)', fill: true, tension: 0.1, pointRadius: 0 },
-                                { label: 'Cost Basis', data: costBasisValues, borderColor: '#999', borderDash: [5,5], fill: false, tension: 0.1, pointRadius: 0 }
-                            ]
+                            datasets
                         },
                         options: {
                             responsive: true, maintainAspectRatio: false,
@@ -5342,6 +5497,7 @@
                 const currentDateRangeKey = getMainDateRangeKey();
                 if (lastMainDateRangeKey !== currentDateRangeKey) {
                     lastMainDateRangeKey = currentDateRangeKey;
+                    ensureBenchmarkHistoryForMainRange();
                     Object.keys(dynamicPanelConfigs).forEach(panelId => {
                         const numId = parseInt(panelId.replace('dynPanel_', ''));
                         if (Number.isNaN(numId)) return;
