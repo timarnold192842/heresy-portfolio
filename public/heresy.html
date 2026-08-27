@@ -4863,6 +4863,40 @@
             const dynamicCharts = {};
             const dynamicChartRenderTokens = {};
 
+            // Chart.js plugin: draws vertical + horizontal crosshair lines at the
+            // current mouse position and clears them on mouse out.
+            const heresyCrosshairPlugin = {
+                id: 'heresyCrosshair',
+                afterEvent(chart, args) {
+                    const evt = args.event;
+                    if (!evt) return;
+                    if (evt.type === 'mousemove' || evt.type === 'mouseenter') {
+                        chart.$heresyCrosshair = { x: evt.x, y: evt.y };
+                    } else if (evt.type === 'mouseout') {
+                        chart.$heresyCrosshair = null;
+                    }
+                },
+                afterDraw(chart) {
+                    const c = chart.$heresyCrosshair;
+                    if (!c) return;
+                    const { ctx, chartArea } = chart;
+                    if (!chartArea) return;
+                    if (c.x < chartArea.left || c.x > chartArea.right) return;
+                    if (c.y < chartArea.top || c.y > chartArea.bottom) return;
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(40,40,40,0.45)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(c.x, chartArea.top);
+                    ctx.lineTo(c.x, chartArea.bottom);
+                    ctx.moveTo(chartArea.left, c.y);
+                    ctx.lineTo(chartArea.right, c.y);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+
             function setChartLoadingState(id, isLoading) {
                 const btn = document.getElementById(`dynUpdateBtn_${id}`);
                 if (btn) {
@@ -4933,9 +4967,40 @@
                         },
                         options: {
                             responsive: true, maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
                             scales: { x: { type: 'time', time: { unit: 'day' } }, y: { beginAtZero: false } },
-                            plugins: { legend: { position: 'top' }, title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: 'Courier New' } } }
-                        }
+                            plugins: {
+                                legend: { position: 'top' },
+                                title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: 'Courier New' } },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        title: (items) => {
+                                            if (!items || !items.length) return '';
+                                            const d = items[0].parsed && items[0].parsed.x ? new Date(items[0].parsed.x) : null;
+                                            return d ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+                                        },
+                                        label: (item) => {
+                                            const ds = item.dataset;
+                                            const val = item.parsed && item.parsed.y != null ? item.parsed.y : null;
+                                            if (val == null) return `${ds.label}: N/A`;
+                                            const data = ds.data || [];
+                                            let firstIdx = -1;
+                                            for (let i = 0; i < data.length; i++) {
+                                                if (data[i] != null && Number.isFinite(data[i])) { firstIdx = i; break; }
+                                            }
+                                            const base = firstIdx >= 0 ? data[firstIdx] : null;
+                                            const pct = (base != null && base !== 0) ? ((val - base) / Math.abs(base)) * 100 : null;
+                                            const parts = [`${ds.label}: ${formatCurrency(val)}`];
+                                            if (pct != null) parts.push(`(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`);
+                                            return parts.join(' ');
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        plugins: [heresyCrosshairPlugin]
                     });
                 } catch (err) {
                     console.error('Dynamic chart error:', err);
