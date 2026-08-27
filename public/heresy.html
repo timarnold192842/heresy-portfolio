@@ -2346,6 +2346,7 @@
                 } else if (tradeFilter === 'resource') {
                     filteredTrades = filteredTrades.filter(trade => trade.category === 'Resource');
                 }
+                filteredTrades = applyMainDateRangeFilter(filteredTrades);
                 
                 const stocks = new Set();
                 const options = new Set();
@@ -2703,6 +2704,36 @@
                 return parsed.getTime();
             }
 
+            function getMainDateRange() {
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                const fromValue = dateFromInput ? dateFromInput.value : '';
+                const toValue = dateToInput ? dateToInput.value : '';
+                return {
+                    fromTs: parseTradeFilterDate(fromValue),
+                    toTs: parseTradeFilterDate(toValue),
+                    fromValue,
+                    toValue
+                };
+            }
+
+            function applyMainDateRangeFilter(trades) {
+                const { fromTs, toTs } = getMainDateRange();
+                if (fromTs == null && toTs == null) return trades;
+                return trades.filter(trade => {
+                    const tradeDateTs = parseTradeFilterDate(trade.entry_date);
+                    if (tradeDateTs == null) return false;
+                    if (fromTs != null && tradeDateTs < fromTs) return false;
+                    if (toTs != null && tradeDateTs > toTs) return false;
+                    return true;
+                });
+            }
+
+            function getMainDateRangeKey() {
+                const { fromValue, toValue } = getMainDateRange();
+                return `${fromValue || ''}|${toValue || ''}`;
+            }
+
             function clearMainDateRange() {
                 const dateFromInput = document.getElementById('mainDateFrom');
                 const dateToInput = document.getElementById('mainDateTo');
@@ -2721,6 +2752,7 @@
                 { id: 2, status: 'all', category: 'Asymmetric' },
                 { id: 3, status: 'all', category: 'Resource' }
             ];
+            let lastMainDateRangeKey = null;
 
             let saveSyncTimer = null;
             let saveSyncInFlight = false;
@@ -4146,6 +4178,7 @@
                 if (status === 'open') trades = trades.filter(t => !isTradeClosed(t));
                 else if (status === 'closed') trades = trades.filter(t => isTradeClosed(t));
                 if (category !== 'all') trades = trades.filter(t => t.category === category);
+                trades = applyMainDateRangeFilter(trades);
 
                 let totalBasis = 0, totalValue = 0, totalDayGain = 0, totalYesterdayValue = 0, hasDay = false;
                 trades.forEach(t => {
@@ -4180,6 +4213,7 @@
                 if (status === 'open') trades = trades.filter(t => !isTradeClosed(t));
                 else if (status === 'closed') trades = trades.filter(t => isTradeClosed(t));
                 if (category !== 'all') trades = trades.filter(t => t.category === category);
+                trades = applyMainDateRangeFilter(trades);
                 return trades.some(t => !isTradeClosed(t) && refreshingKeys.has(getTradeMarketKey(t)));
             }
 
@@ -4511,6 +4545,7 @@
                 if (statusVal === 'open') trades = trades.filter(t => !isTradeClosed(t));
                 else if (statusVal === 'closed') trades = trades.filter(t => isTradeClosed(t));
                 if (categoryVal !== 'all') trades = trades.filter(t => t.category === categoryVal);
+                trades = applyMainDateRangeFilter(trades);
 
                 let totalBasis = 0, totalValue = 0, totalDayGain = 0, totalYesterdayValue = 0, hasDay = false;
                 trades.forEach(t => {
@@ -5229,20 +5264,7 @@
                 if (categoryVal !== 'all') {
                     filteredTrades = filteredTrades.filter(trade => trade.category === categoryVal);
                 }
-
-                const dateFromInput = document.getElementById('mainDateFrom');
-                const dateToInput = document.getElementById('mainDateTo');
-                const dateFromTs = parseTradeFilterDate(dateFromInput ? dateFromInput.value : '');
-                const dateToTs = parseTradeFilterDate(dateToInput ? dateToInput.value : '');
-                if (dateFromTs != null || dateToTs != null) {
-                    filteredTrades = filteredTrades.filter(trade => {
-                        const tradeDateTs = parseTradeFilterDate(trade.entry_date);
-                        if (tradeDateTs == null) return false;
-                        if (dateFromTs != null && tradeDateTs < dateFromTs) return false;
-                        if (dateToTs != null && tradeDateTs > dateToTs) return false;
-                        return true;
-                    });
-                }
+                filteredTrades = applyMainDateRangeFilter(filteredTrades);
 
                 const cashflowSel = document.getElementById('mainCashflowStatus');
                 const cashflowFilter = cashflowSel ? cashflowSel.value : 'all';
@@ -5314,6 +5336,22 @@
                 setupTableSorting(tableId);
                 renderSummary();
                 saveState();
+
+                const currentDateRangeKey = getMainDateRangeKey();
+                if (lastMainDateRangeKey !== currentDateRangeKey) {
+                    lastMainDateRangeKey = currentDateRangeKey;
+                    Object.keys(dynamicPanelConfigs).forEach(panelId => {
+                        const numId = parseInt(panelId.replace('dynPanel_', ''));
+                        if (Number.isNaN(numId)) return;
+                        const cfg = dynamicPanelConfigs[panelId];
+                        if (!cfg) return;
+                        if (cfg.type === 'table') {
+                            renderDynamicTable(numId);
+                        } else if (cfg.type === 'chart') {
+                            renderDynamicChart(numId);
+                        }
+                    });
+                }
             }
 
             // Table sorting functionality
