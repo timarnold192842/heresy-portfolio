@@ -1319,6 +1319,13 @@
                 <label>Category:
                     <select id="mainCategory" data-role="category" onchange="generateTable()"></select>
                 </label>
+                <label>Date From:
+                    <input id="mainDateFrom" type="date" onchange="generateTable()" style="font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                </label>
+                <label>Date To:
+                    <input id="mainDateTo" type="date" onchange="generateTable()" style="font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                </label>
+                <button type="button" class="small-panel-btn" onclick="clearMainDateRange()" style="padding:4px 8px; font-size:11px;">Clear Dates</button>
                 <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
                 <div class="panel-col-dropdown">
                     <button onclick="togglePanelColMenu('main', event)" style="cursor:pointer;">Columns ▼</button>
@@ -2654,6 +2661,15 @@
                 } else {
                     url.searchParams.delete('categories');
                 }
+
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                const dateFrom = dateFromInput ? dateFromInput.value : '';
+                const dateTo = dateToInput ? dateToInput.value : '';
+                if (dateFrom) url.searchParams.set('dateFrom', dateFrom);
+                else url.searchParams.delete('dateFrom');
+                if (dateTo) url.searchParams.set('dateTo', dateTo);
+                else url.searchParams.delete('dateTo');
                 
                 window.history.replaceState({}, '', url);
             }
@@ -2670,6 +2686,29 @@
                 if (catSel && categoriesParam) {
                     catSel.value = categoriesParam;
                 }
+
+                const dateFrom = url.searchParams.get('dateFrom') || '';
+                const dateTo = url.searchParams.get('dateTo') || '';
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                if (dateFromInput) dateFromInput.value = dateFrom;
+                if (dateToInput) dateToInput.value = dateTo;
+            }
+
+            function parseTradeFilterDate(dateStr) {
+                if (!dateStr) return null;
+                const parsed = new Date(dateStr);
+                if (Number.isNaN(parsed.getTime())) return null;
+                parsed.setHours(0, 0, 0, 0);
+                return parsed.getTime();
+            }
+
+            function clearMainDateRange() {
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                if (dateFromInput) dateFromInput.value = '';
+                if (dateToInput) dateToInput.value = '';
+                generateTable();
             }
 
             // ===== LocalStorage + Server Persistence =====
@@ -3104,6 +3143,8 @@
                     mainTableConfig: {
                         status: document.getElementById('mainStatus') ? document.getElementById('mainStatus').value : 'open',
                         category: document.getElementById('mainCategory') ? document.getElementById('mainCategory').value : 'all',
+                        dateFrom: document.getElementById('mainDateFrom') ? document.getElementById('mainDateFrom').value : '',
+                        dateTo: document.getElementById('mainDateTo') ? document.getElementById('mainDateTo').value : '',
                         visibleColumns: mainVisibleCols,
                         mobileVisibleColumns: mobileCols,
                         desktopVisibleColumns: desktopCols
@@ -3174,6 +3215,10 @@
                     if (ss && mc.status) ss.value = mc.status;
                     const cs = document.getElementById('mainCategory');
                     if (cs && mc.category) cs.value = mc.category;
+                    const dateFromInput = document.getElementById('mainDateFrom');
+                    const dateToInput = document.getElementById('mainDateTo');
+                    if (dateFromInput) dateFromInput.value = mc.dateFrom || '';
+                    if (dateToInput) dateToInput.value = mc.dateTo || '';
                     mainTableColumnProfiles.mobile = Array.isArray(mc.mobileVisibleColumns) ? [...mc.mobileVisibleColumns] : null;
                     mainTableColumnProfiles.desktop = Array.isArray(mc.desktopVisibleColumns) ? [...mc.desktopVisibleColumns] : null;
                     const chosenColumns = isMobileViewport()
@@ -5185,6 +5230,20 @@
                     filteredTrades = filteredTrades.filter(trade => trade.category === categoryVal);
                 }
 
+                const dateFromInput = document.getElementById('mainDateFrom');
+                const dateToInput = document.getElementById('mainDateTo');
+                const dateFromTs = parseTradeFilterDate(dateFromInput ? dateFromInput.value : '');
+                const dateToTs = parseTradeFilterDate(dateToInput ? dateToInput.value : '');
+                if (dateFromTs != null || dateToTs != null) {
+                    filteredTrades = filteredTrades.filter(trade => {
+                        const tradeDateTs = parseTradeFilterDate(trade.entry_date);
+                        if (tradeDateTs == null) return false;
+                        if (dateFromTs != null && tradeDateTs < dateFromTs) return false;
+                        if (dateToTs != null && tradeDateTs > dateToTs) return false;
+                        return true;
+                    });
+                }
+
                 const cashflowSel = document.getElementById('mainCashflowStatus');
                 const cashflowFilter = cashflowSel ? cashflowSel.value : 'all';
                 if (cashflowFilter === 'none') {
@@ -5251,6 +5310,7 @@
                     <tbody>${filteredTrades.map(trade => buildTradeRowHTML(trade, hide)).join('')}</tbody></table>`;
 
                 document.getElementById('tableContainer').innerHTML = html;
+                updateURLParams();
                 setupTableSorting(tableId);
                 renderSummary();
                 saveState();
