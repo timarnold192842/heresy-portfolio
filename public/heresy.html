@@ -4844,12 +4844,15 @@
                                 <option value="closed" ${cfg.status==='closed'?'selected':''}>Closed</option>
                             </select>
                         </label>
-                        <button style="background:#007acc;color:white;cursor:pointer;" onclick="renderDynamicChart(${id})">Update</button>
+                        <button id="dynUpdateBtn_${id}" style="background:#007acc;color:white;cursor:pointer;" onclick="renderDynamicChart(${id})">Update</button>
                         <button class="remove-panel" onclick="removeDynamicPanel('${panelId}', ${id})">×</button>
                     </div>
                     <div class="section-content panel-content">
                         <div class="chart-container" style="position:relative;height:400px;background:white;border:1px solid #ddd;border-radius:4px;padding:20px;">
                             <canvas id="dynCanvas_${id}"></canvas>
+                            <div id="dynLoading_${id}" class="chart-loading-overlay" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.75);align-items:center;justify-content:center;font-family:'Courier New',Courier,monospace;font-size:13px;color:#333;z-index:5;">
+                                <div style="display:flex;align-items:center;gap:8px;"><span class="cell-spinner" style="font-size:18px;">↻</span><span>Updating chart...</span></div>
+                            </div>
                         </div>
                     </div>`;
                 container.appendChild(panel);
@@ -4859,6 +4862,29 @@
 
             const dynamicCharts = {};
             const dynamicChartRenderTokens = {};
+
+            function setChartLoadingState(id, isLoading) {
+                const btn = document.getElementById(`dynUpdateBtn_${id}`);
+                if (btn) {
+                    if (isLoading) {
+                        btn.disabled = true;
+                        btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
+                        btn.textContent = 'Updating...';
+                        btn.style.opacity = '0.7';
+                        btn.style.cursor = 'wait';
+                    } else {
+                        btn.disabled = false;
+                        btn.textContent = btn.dataset.originalText || 'Update';
+                        btn.style.opacity = '';
+                        btn.style.cursor = 'pointer';
+                    }
+                }
+                const overlay = document.getElementById(`dynLoading_${id}`);
+                if (overlay) {
+                    overlay.style.display = isLoading ? 'flex' : 'none';
+                }
+            }
+
             async function renderDynamicChart(id) {
                 const periodEl = document.getElementById(`dynPeriod_${id}`);
                 const categoryEl = document.getElementById(`dynCategory_${id}`);
@@ -4875,6 +4901,7 @@
                     dynamicPanelConfigs[panelId] = { ...dynamicPanelConfigs[panelId], type: 'chart', period, category, status };
                     saveState();
                 }
+                setChartLoadingState(id, true);
                 try {
                     const { fromDate, toDate, filteredTrades } = await fetchHistoricalData(period, { status, category });
                     if (dynamicChartRenderTokens[id] !== renderToken) return;
@@ -4910,7 +4937,13 @@
                             plugins: { legend: { position: 'top' }, title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: 'Courier New' } } }
                         }
                     });
-                } catch (err) { console.error('Dynamic chart error:', err); }
+                } catch (err) {
+                    console.error('Dynamic chart error:', err);
+                } finally {
+                    if (dynamicChartRenderTokens[id] === renderToken) {
+                        setChartLoadingState(id, false);
+                    }
+                }
             }
 
             function removeDynamicPanel(panelId, numId) {
