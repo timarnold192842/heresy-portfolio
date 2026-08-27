@@ -2830,7 +2830,14 @@
             function calculateBenchmarkOverlayValues(dateRange, portfolioValues, costBasisValues) {
                 const prices = historicalData[SP500_BENCHMARK_TICKER] || {};
                 const spySeries = dateRange.map(dateStr => getPriceOnOrBefore(dateStr, prices));
-                const MIN_ANCHOR_VALUE = 1;
+                const absPortfolio = portfolioValues.map(v => Math.abs(Number(v) || 0));
+                const absBasis = (Array.isArray(costBasisValues) ? costBasisValues : []).map(v => Math.abs(Number(v) || 0));
+                const maxPortfolio = absPortfolio.length ? Math.max(...absPortfolio) : 0;
+                const maxBasis = absBasis.length ? Math.max(...absBasis) : 0;
+
+                // Avoid anchoring to tiny startup values that make the benchmark
+                // look flat after additional history fills in.
+                const MIN_ANCHOR_VALUE = Math.max(1, maxPortfolio * 0.02, maxBasis * 0.02);
                 let anchorIdx = -1;
 
                 // Prefer first date with meaningful portfolio value so the benchmark
@@ -4856,11 +4863,14 @@
             }
 
             const dynamicCharts = {};
+            const dynamicChartRenderTokens = {};
             async function renderDynamicChart(id) {
                 const periodEl = document.getElementById(`dynPeriod_${id}`);
                 const categoryEl = document.getElementById(`dynCategory_${id}`);
                 const statusEl = document.getElementById(`dynStatus_${id}`);
                 if (!periodEl || !categoryEl || !statusEl) return;
+                const renderToken = (dynamicChartRenderTokens[id] || 0) + 1;
+                dynamicChartRenderTokens[id] = renderToken;
                 const period = periodEl.value;
                 const category = categoryEl.value;
                 const status = statusEl.value;
@@ -4872,6 +4882,7 @@
                 }
                 try {
                     const { fromDate, toDate, filteredTrades } = await fetchHistoricalData(period, { status, category });
+                    if (dynamicChartRenderTokens[id] !== renderToken) return;
                     if (filteredTrades.length === 0) {
                         if (dynamicCharts[id]) { dynamicCharts[id].destroy(); delete dynamicCharts[id]; }
                         return;
@@ -4880,6 +4891,7 @@
                     const benchmarkValues = calculateBenchmarkOverlayValues(dateRange, portfolioValues, costBasisValues);
                     const canvas = document.getElementById(`dynCanvas_${id}`);
                     if (!canvas) return;
+                    if (dynamicChartRenderTokens[id] !== renderToken) return;
                     if (dynamicCharts[id]) dynamicCharts[id].destroy();
                     const labels = dateRange.map(d => typeof d === 'string' ? new Date(d) : d);
                     const catLabel = category === 'all' ? 'All categories' : category;
