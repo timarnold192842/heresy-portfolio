@@ -2830,21 +2830,62 @@
             function calculateBenchmarkOverlayValues(dateRange, portfolioValues, costBasisValues) {
                 const prices = historicalData[SP500_BENCHMARK_TICKER] || {};
                 const spySeries = dateRange.map(dateStr => getPriceOnOrBefore(dateStr, prices));
+                const MIN_ANCHOR_VALUE = 1;
                 let anchorIdx = -1;
+
+                // Prefer first date with meaningful portfolio value so the benchmark
+                // does not get rebased to ~0 and appear flat.
                 for (let i = 0; i < dateRange.length; i++) {
                     const portfolioAnchor = Number(portfolioValues[i]);
-                    if (spySeries[i] != null && spySeries[i] !== 0 && Number.isFinite(portfolioAnchor)) {
+                    if (
+                        spySeries[i] != null &&
+                        spySeries[i] !== 0 &&
+                        Number.isFinite(portfolioAnchor) &&
+                        Math.abs(portfolioAnchor) >= MIN_ANCHOR_VALUE
+                    ) {
                         anchorIdx = i;
                         break;
                     }
                 }
+
+                // Fallback to a meaningful cost-basis point if portfolio values are
+                // temporarily near zero in the selected window.
+                if (anchorIdx === -1 && Array.isArray(costBasisValues)) {
+                    for (let i = 0; i < dateRange.length; i++) {
+                        const basisAnchor = Number(costBasisValues[i]);
+                        if (
+                            spySeries[i] != null &&
+                            spySeries[i] !== 0 &&
+                            Number.isFinite(basisAnchor) &&
+                            Math.abs(basisAnchor) >= MIN_ANCHOR_VALUE
+                        ) {
+                            anchorIdx = i;
+                            break;
+                        }
+                    }
+                }
+
                 if (anchorIdx === -1) return null;
 
                 // Anchor SPY to the same starting value as the portfolio line,
                 // then apply SPY returns from that point forward.
-                const basePortfolio = Number(portfolioValues[anchorIdx]);
+                let basePortfolio = Number(portfolioValues[anchorIdx]);
+                if (!Number.isFinite(basePortfolio) || Math.abs(basePortfolio) < MIN_ANCHOR_VALUE) {
+                    const basis = Number(Array.isArray(costBasisValues) ? costBasisValues[anchorIdx] : NaN);
+                    if (Number.isFinite(basis) && Math.abs(basis) >= MIN_ANCHOR_VALUE) {
+                        basePortfolio = basis;
+                    }
+                }
+                if (!Number.isFinite(basePortfolio) || Math.abs(basePortfolio) < MIN_ANCHOR_VALUE) {
+                    return null;
+                }
+
                 const baseSpy = spySeries[anchorIdx];
-                return spySeries.map(v => (v == null ? null : basePortfolio * (v / baseSpy)));
+                return spySeries.map((v, i) => {
+                    if (i < anchorIdx) return null;
+                    if (v == null) return null;
+                    return basePortfolio * (v / baseSpy);
+                });
             }
 
             function clearMainDateRange() {
