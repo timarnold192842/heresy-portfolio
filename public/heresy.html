@@ -2832,20 +2832,17 @@
                 const spySeries = dateRange.map(dateStr => getPriceOnOrBefore(dateStr, prices));
                 let anchorIdx = -1;
                 for (let i = 0; i < dateRange.length; i++) {
-                    if (spySeries[i] != null && spySeries[i] !== 0) {
+                    const portfolioAnchor = Number(portfolioValues[i]);
+                    if (spySeries[i] != null && spySeries[i] !== 0 && Number.isFinite(portfolioAnchor)) {
                         anchorIdx = i;
                         break;
                     }
                 }
                 if (anchorIdx === -1) return null;
 
-                // Use a stable positive anchor to avoid inverted/erratic benchmark lines
-                // when portfolio value is negative or near zero (e.g., cashflow-heavy books).
-                const basePortfolio = Math.max(
-                    Math.abs(Number(portfolioValues[anchorIdx]) || 0),
-                    Math.abs(Number(costBasisValues && costBasisValues[anchorIdx]) || 0),
-                    1
-                );
+                // Anchor SPY to the same starting value as the portfolio line,
+                // then apply SPY returns from that point forward.
+                const basePortfolio = Number(portfolioValues[anchorIdx]);
                 const baseSpy = spySeries[anchorIdx];
                 return spySeries.map(v => (v == null ? null : basePortfolio * (v / baseSpy)));
             }
@@ -4851,7 +4848,7 @@
                         { label: 'Cost Basis', data: costBasisValues, borderColor: '#999', borderDash: [5,5], fill: false, tension: 0.1, pointRadius: 0 }
                     ];
                     if (benchmarkValues) {
-                        datasets.push({ label: 'S&P 500 (scaled, base-normalized)', data: benchmarkValues, borderColor: '#ef6c00', borderDash: [8, 4], fill: false, tension: 0.1, pointRadius: 0 });
+                        datasets.push({ label: 'S&P 500 (rebased to portfolio start)', data: benchmarkValues, borderColor: '#ef6c00', borderDash: [8, 4], fill: false, tension: 0.1, pointRadius: 0 });
                     }
                     dynamicCharts[id] = new Chart(canvas.getContext('2d'), {
                         type: 'line',
