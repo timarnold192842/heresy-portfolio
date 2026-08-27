@@ -2277,22 +2277,22 @@
             async function fetchHistoricalStockData(ticker, fromDate, toDate) {
                 try {
                     const prices = await getActiveProvider().historyStock(ticker, fromDate, toDate, getProviderConfig());
-                    historicalData[ticker] = prices || {};
+                    historicalData[ticker] = { ...(historicalData[ticker] || {}), ...(prices || {}) };
                     console.log(`Cached historical data for ${ticker}:`, Object.keys(historicalData[ticker]).length, 'days');
                 } catch (error) {
                     console.warn(`Failed to fetch historical stock data for ${ticker}:`, error);
-                    historicalData[ticker] = {};
+                    if (!historicalData[ticker]) historicalData[ticker] = {};
                 }
             }
 
             async function fetchHistoricalOptionData(optionTicker, fromDate, toDate) {
                 try {
                     const prices = await getActiveProvider().historyOption(optionTicker, fromDate, toDate, getProviderConfig());
-                    historicalData[optionTicker] = prices || {};
+                    historicalData[optionTicker] = { ...(historicalData[optionTicker] || {}), ...(prices || {}) };
                     console.log(`Cached historical data for ${optionTicker}:`, Object.keys(historicalData[optionTicker]).length, 'days');
                 } catch (error) {
                     console.warn(`Failed to fetch historical option data for ${optionTicker}:`, error);
-                    historicalData[optionTicker] = {};
+                    if (!historicalData[optionTicker]) historicalData[optionTicker] = {};
                 }
             }
 
