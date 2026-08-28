@@ -4985,15 +4985,16 @@
                                             const ds = item.dataset;
                                             const val = item.parsed && item.parsed.y != null ? item.parsed.y : null;
                                             if (val == null) return `${ds.label}: N/A`;
-                                            const data = ds.data || [];
-                                            let firstIdx = -1;
-                                            for (let i = 0; i < data.length; i++) {
-                                                if (data[i] != null && Number.isFinite(data[i])) { firstIdx = i; break; }
-                                            }
-                                            const base = firstIdx >= 0 ? data[firstIdx] : null;
-                                            const pct = (base != null && base !== 0) ? ((val - base) / Math.abs(base)) * 100 : null;
+                                            const idx = item.dataIndex;
+                                            const basis = Number(costBasisValues[idx]);
                                             const parts = [`${ds.label}: ${formatCurrency(val)}`];
-                                            if (pct != null) parts.push(`(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`);
+                                            if (ds.label === 'Cost Basis') {
+                                                return parts.join(' ');
+                                            }
+                                            if (Number.isFinite(basis) && basis !== 0) {
+                                                const pct = ((val - basis) / Math.abs(basis)) * 100;
+                                                parts.push(`(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% vs basis)`);
+                                            }
                                             return parts.join(' ');
                                         }
                                     }
