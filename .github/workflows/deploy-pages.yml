@@ -32,8 +32,8 @@ jobs:
       - name: Prepare static artifact
         run: |
           mkdir -p site
-          cp public/heresy.html site/index.html
-          cp public/heresy-trades.js site/heresy-trades.js
+          cp -R public/. site/
+          cp site/heresy.html site/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kicker Ramp Builder</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --card: #fffdf9;
+      --ink: #1f2722;
+      --muted: #5a665f;
+      --accent: #0d5c63;
+      --accent-2: #d17a22;
+      --line: #d9d1c3;
+      --good: #2f7d32;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #fff5df 0%, rgba(255,245,223,0.25) 35%, transparent 55%),
+        radial-gradient(circle at 85% 10%, #d6efe4 0%, rgba(214,239,228,0.2) 30%, transparent 55%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1200px, 94vw);
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero, .card {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(20, 18, 14, 0.08);
+    }
+
+    .hero {
+      padding: 20px;
+      display: grid;
+      gap: 10px;
+      animation: rise 420ms ease-out;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 3vw, 2.2rem);
+      letter-spacing: 0.2px;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin: 0;
+      max-width: 75ch;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+
+    .card { padding: 16px; }
+
+    .inputs { grid-column: span 4; }
+    .results { grid-column: span 8; }
+    .cuts { grid-column: span 8; }
+    .buy { grid-column: span 4; }
+    .diag { grid-column: span 12; }
+
+    label {
+      font-size: 0.88rem;
+      color: var(--muted);
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    input, select, button {
+      font: inherit;
+      padding: 10px 11px;
+      border-radius: 10px;
+      border: 1px solid #cfc6b8;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .btn {
+      width: 100%;
+      margin-top: 6px;
+      border: 0;
+      cursor: pointer;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #2c8f87);
+      color: #fff;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fffcf6;
+    }
+
+    .stat .k { font-size: 0.78rem; color: var(--muted); }
+    .stat .v { font-size: 1.03rem; font-weight: 700; margin-top: 2px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 8px 6px;
+      vertical-align: top;
+    }
+
+    th { color: var(--muted); font-size: 0.8rem; }
+
+    .cost {
+      display: grid;
+      gap: 8px;
+    }
+
+    .cost-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+
+    .total {
+      border: 2px solid var(--good);
+      background: #eef9ee;
+      font-weight: 800;
+    }
+
+    .caption {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin: 6px 0 0;
+    }
+
+    .diagram-wrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .note {
+      font-size: 0.83rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    @media (max-width: 980px) {
+      .inputs, .results, .cuts, .buy, .diag { grid-column: span 12; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>Kicker Ramp Builder (Imperial + Lumber + Cost)</h1>
+      <p class="sub">Set ramp height, lip angle, and width. The app calculates transition geometry and outputs a North American buy list, cut list, board-to-piece cut map, and assembly layout. Lumber prices are rough Home Depot-style estimates.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card inputs">
+        <h2>Inputs</h2>
+        <label>Ramp height (in)
+          <input id="heightIn" type="number" min="12" max="72" step="1" value="36" />
+        </label>
+        <label>Lip angle (deg)
+          <input id="angleDeg" type="number" min="20" max="70" step="1" value="45" />
+        </label>
+        <label>Ramp width (in)
+          <input id="widthIn" type="number" min="30" max="96" step="1" value="48" />
+        </label>
+        <div class="row">
+          <label>Rib spacing target (in)
+            <input id="spacingIn" type="number" min="6" max="16" step="1" value="8" />
+          </label>
+          <label>Transition plywood layers
+            <select id="layers">
+              <option value="1">1 layer</option>
+              <option value="2" selected>2 layers</option>
+            </select>
+          </label>
+        </div>
+        <label>Top deck length past lip (in)
+          <input id="deckIn" type="number" min="8" max="36" step="1" value="18" />
+        </label>
+        <button id="buildBtn" class="btn" type="button">Build Plan</button>
+        <p class="note">Assumes 2x4 framing, 3/4 in side plates, and 3/8 in riding surface plywood. For large/pro-level jumps, validate structure with a builder before cutting.</p>
+      </article>
+
+      <article class="card results">
+        <h2>Geometry</h2>
+        <div id="stats" class="stat-grid"></div>
+      </article>
+
+      <article class="card cuts">
+        <h2>Cut List</h2>
+        <table>
+          <thead>
+            <tr><th>Code</th><th>Part</th><th>Qty</th><th>Final length</th><th>Source stock</th></tr>
+          </thead>
+          <tbody id="cutBody"></tbody>
+        </table>
+        <p class="caption">Each part code maps into the board cut map and assembly diagram below.</p>
+      </article>
+
+      <article class="card buy">
+        <h2>Buy List + Cost</h2>
+        <div id="buyList" class="cost"></div>
+      </article>
+
+      <article class="card diag">
+        <h2>Diagrams</h2>
+        <div class="diagram-wrap">
+          <div>
+            <h3>1) Board-to-piece cut map</h3>
+            <svg id="cutMap" viewBox="0 0 1100 420"></svg>
+          </div>
+          <div>
+            <h3>2) Side assembly layout</h3>
+            <svg id="assembly" viewBox="0 0 1100 420"></svg>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const SKU = {
+      "2x4": [
+        { name: "2x4x8 SPF", length: 96, price: 4.28 },
+        { name: "2x4x10 SPF", length: 120, price: 5.48 },
+        { name: "2x4x12 SPF", length: 144, price: 6.58 }
+      ],
+      "2x6": [
+        { name: "2x6x8 SPF", length: 96, price: 7.34 },
+        { name: "2x6x10 SPF", length: 120, price: 9.18 }
+      ],
+      "ply_3_4": { name: '3/4 in plywood 4x8', area: 32, price: 54 },
+      "ply_3_8": { name: '3/8 in plywood 4x8', area: 32, price: 36 },
+      "screw_box": { name: '3 in exterior screws (5 lb)', price: 39 },
+      "adhesive": { name: 'Construction adhesive', price: 7 }
+    };
+
+    const fmtIn = (v) => {
+      const sign = v < 0 ? "-" : "";
+      const n = Math.abs(v);
+      const ft = Math.floor(n / 12);
+      const inch = Math.round((n - ft * 12) * 10) / 10;
+      return `${sign}${ft}' ${inch.toFixed(1)}\"`;
+    };
+
+    const fmtNum = (v, d = 1) => Number(v).toFixed(d);
+
+    function calcGeometry(heightIn, angleDeg) {
+      const theta = angleDeg * Math.PI / 180;
+      const radius = heightIn / (1 - Math.cos(theta));
+      const base = radius * Math.sin(theta);
+      const chord = Math.hypot(base, heightIn);
+      const arc = radius * theta;
+      return { theta, radius, base, chord, arc };
+    }
+
+    function chooseBestSku(type, cutLen, qty) {
+      const options = SKU[type];
+      let best = null;
+      for (const sku of options) {
+        const piecesPerBoard = Math.floor(sku.length / cutLen);
+        if (piecesPerBoard < 1) continue;
+        const boards = Math.ceil(qty / piecesPerBoard);
+        const cost = boards * sku.price;
+        const waste = boards * sku.length - qty * cutLen;
+        const result = { sku, piecesPerBoard, boards, cost, waste };
+        if (!best || cost < best.cost || (cost === best.cost && waste < best.waste)) {
+          best = result;
+        }
+      }
+      return best;
+    }
+
+    function buildPlan() {
+      const heightIn = Number(document.getElementById("heightIn").value);
+      const angleDeg = Number(document.getElementById("angleDeg").value);
+      const widthIn = Number(document.getElementById("widthIn").value);
+      const spacingTarget = Number(document.getElementById("spacingIn").value);
+      const layers = Number(document.getElementById("layers").value);
+      const deckIn = Number(document.getElementById("deckIn").value);
+
+      if (angleDeg <= 0 || angleDeg >= 89) return;
+
+      const g = calcGeometry(heightIn, angleDeg);
+      const sideCount = widthIn <= 54 ? 2 : widthIn <= 78 ? 3 : 4;
+      const ribCount = Math.max(6, Math.floor(g.arc / spacingTarget) + 1);
+      const actualRibSpacing = g.arc / (ribCount - 1);
+      const ribLen = Math.max(24, widthIn - 1.5);
+      const baseSkidLen = g.base + deckIn;
+      const deckJoistCount = Math.max(3, Math.round(widthIn / 16) + 1);
+      const braceLen = Math.hypot(heightIn * 0.65, g.base * 0.25);
+
+      const cuts = [
+        { code: "A", part: "Transition ribs (2x4)", type: "2x4", qty: ribCount, len: ribLen },
+        { code: "B", part: "Base skids (2x4)", type: "2x4", qty: 2, len: baseSkidLen },
+        { code: "C", part: "Deck joists (2x4)", type: "2x4", qty: deckJoistCount, len: deckIn },
+        { code: "D", part: "Diagonal braces (2x4)", type: "2x4", qty: 4, len: braceLen },
+        { code: "E", part: "Lip cap (2x6)", type: "2x6", qty: 1, len: widthIn }
+      ];
+
+      const buy = [];
+      const buyAgg = new Map();
+      const boardMapRows = [];
+
+      for (const item of cuts) {
+        const pick = chooseBestSku(item.type, item.len, item.qty);
+        if (!pick) continue;
+        item.pick = pick;
+        buy.push({
+          name: pick.sku.name,
+          qty: pick.boards,
+          priceEach: pick.sku.price,
+          subtotal: pick.cost
+        });
+
+        if (!buyAgg.has(pick.sku.name)) {
+          buyAgg.set(pick.sku.name, { qty: 0, priceEach: pick.sku.price, subtotal: 0 });
+        }
+        const agg = buyAgg.get(pick.sku.name);
+        agg.qty += pick.boards;
+        agg.subtotal += pick.cost;
+
+        let remaining = item.qty;
+        for (let b = 1; b <= pick.boards; b += 1) {
+          const take = Math.min(pick.piecesPerBoard, remaining);
+          remaining -= take;
+          boardMapRows.push({
+            boardLabel: `${pick.sku.name} #${b}`,
+            sourceLen: pick.sku.length,
+            pieceCode: item.code,
+            cutLen: item.len,
+            pieces: take
+          });
+        }
+      }
+
+      const sideBlankAreaFt2 = (g.base * (heightIn + 6) * 0.62 * sideCount) / 144;
+      const sideSheets = Math.max(1, Math.ceil(sideBlankAreaFt2 / SKU.ply_3_4.area));
+      const rideAreaFt2 = ((g.arc + deckIn) * widthIn) / 144;
+      const transitionSheets = Math.max(1, Math.ceil((rideAreaFt2 * layers) / SKU.ply_3_8.area));
+
+      const fixed = [
+        { name: SKU.ply_3_4.name, qty: sideSheets, priceEach: SKU.ply_3_4.price },
+        { name: SKU.ply_3_8.name, qty: transitionSheets, priceEach: SKU.ply_3_8.price },
+        { name: SKU.screw_box.name, qty: 1, priceEach: SKU.screw_box.price },
+        { name: SKU.adhesive.name, qty: Math.max(2, Math.ceil(widthIn / 36)), priceEach: SKU.adhesive.price }
+      ];
+
+      fixed.forEach((f) => {
+        if (!buyAgg.has(f.name)) {
+          buyAgg.set(f.name, { qty: 0, priceEach: f.priceEach, subtotal: 0 });
+        }
+        const agg = buyAgg.get(f.name);
+        agg.qty += f.qty;
+        agg.subtotal += f.qty * f.priceEach;
+      });
+
+      renderStats({
+        heightIn,
+        angleDeg,
+        widthIn,
+        radius: g.radius,
+        base: g.base,
+        chord: g.chord,
+        arc: g.arc,
+        ribCount,
+        actualRibSpacing,
+        sideCount
+      });
+
+      renderCutList(cuts);
+      renderBuyList(buyAgg);
+      renderCutMap(boardMapRows);
+      renderAssembly({ g, heightIn, widthIn, deckIn, ribCount, sideCount });
+    }
+
+    function renderStats(s) {
+      const rows = [
+        ["Radius", fmtIn(s.radius)],
+        ["Base length", fmtIn(s.base)],
+        ["Chord length", fmtIn(s.chord)],
+        ["Arc length", fmtIn(s.arc)],
+        ["Rib count", String(s.ribCount)],
+        ["Rib spacing", `${fmtNum(s.actualRibSpacing, 2)} in`],
+        ["Side plates", String(s.sideCount)],
+        ["Height", fmtIn(s.heightIn)],
+        ["Lip angle", `${fmtNum(s.angleDeg, 1)} deg`]
+      ];
+      const el = document.getElementById("stats");
+      el.innerHTML = rows.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    }
+
+    function renderCutList(cuts) {
+      const body = document.getElementById("cutBody");
+      body.innerHTML = cuts.map((c) => {
+        const source = c.pick ? `${c.pick.sku.name} (${c.pick.piecesPerBoard}/board)` : "N/A";
+        return `<tr><td>${c.code}</td><td>${c.part}</td><td>${c.qty}</td><td>${fmtIn(c.len)}</td><td>${source}</td></tr>`;
+      }).join("");
+    }
+
+    function renderBuyList(buyAgg) {
+      const list = [];
+      for (const [name, row] of buyAgg.entries()) {
+        list.push({ name, ...row });
+      }
+      list.sort((a, b) => b.subtotal - a.subtotal);
+      const total = list.reduce((sum, item) => sum + item.subtotal, 0);
+
+      const container = document.getElementById("buyList");
+      container.innerHTML = list.map((item) => {
+        return `<div class="cost-item"><div>${item.name} x ${item.qty}</div><div>$${fmtNum(item.subtotal, 2)}</div></div>`;
+      }).join("") + `<div class="cost-item total"><div>Estimated total</div><div>$${fmtNum(total, 2)}</div></div>` +
+      `<p class="caption">Pricing is a planning estimate only and varies by store, market, and treated vs non-treated stock.</p>`;
+    }
+
+    function renderCutMap(rows) {
+      const svg = document.getElementById("cutMap");
+      const padX = 14;
+      const rowH = 34;
+      const usableW = 1060;
+      const colorByCode = {
+        A: "#8ecae6",
+        B: "#ffb703",
+        C: "#95d5b2",
+        D: "#f4a261",
+        E: "#cdb4db"
+      };
+
+      const lines = [];
+      lines.push(`<rect x="1" y="1" width="1098" height="418" fill="#fff" stroke="#d9d1c3"/>`);
+
+      rows.slice(0, 10).forEach((r, i) => {
+        const y = 14 + i * (rowH + 6);
+        lines.push(`<text x="${padX}" y="${y + 11}" font-size="11" fill="#4b5563">${r.boardLabel}</text>`);
+        lines.push(`<rect x="${padX}" y="${y + 15}" width="${usableW}" height="${rowH}" fill="#f4f4f4" stroke="#bfbfbf"/>`);
+
+        const pieceW = (r.cutLen / r.sourceLen) * usableW;
+        let x = padX;
+        for (let p = 1; p <= r.pieces; p += 1) {
+          const c = colorByCode[r.pieceCode] || "#ddd";
+          lines.push(`<rect x="${x}" y="${y + 15}" width="${pieceW}" height="${rowH}" fill="${c}" stroke="#5f6b63"/>`);
+          lines.push(`<text x="${x + 5}" y="${y + 36}" font-size="10" fill="#1f2722">${r.pieceCode}${p}</text>`);
+          x += pieceW;
+        }
+        if (x < padX + usableW) {
+          lines.push(`<rect x="${x}" y="${y + 15}" width="${padX + usableW - x}" height="${rowH}" fill="#efe8dc" stroke="#c8c0b3"/>`);
+        }
+      });
+
+      lines.push(`<text x="14" y="404" font-size="11" fill="#5a665f">Codes: A ribs, B base skids, C deck joists, D braces, E lip cap</text>`);
+      svg.innerHTML = lines.join("");
+    }
+
+    function renderAssembly({ g, heightIn, widthIn, deckIn, ribCount, sideCount }) {
+      const svg = document.getElementById("assembly");
+      const W = 1100;
+      const H = 420;
+      const margin = { l: 70, r: 60, t: 25, b: 50 };
+      const drawW = W - margin.l - margin.r;
+      const drawH = H - margin.t - margin.b;
+      const xScale = drawW / (g.base + deckIn + 20);
+      const yScale = drawH / (heightIn + 20);
+      const sx = (x) => margin.l + x * xScale;
+      const sy = (y) => H - margin.b - y * yScale;
+
+      const pts = [];
+      const steps = 80;
+      for (let i = 0; i <= steps; i += 1) {
+        const t = (g.theta * i) / steps;
+        const x = g.radius * Math.sin(t);
+        const y = g.radius * (1 - Math.cos(t));
+        pts.push(`${sx(x)},${sy(y)}`);
+      }
+
+      const lines = [];
+      lines.push(`<rect x="1" y="1" width="1098" height="418" fill="#fff" stroke="#d9d1c3"/>`);
+      lines.push(`<line x1="${sx(0)}" y1="${sy(0)}" x2="${sx(g.base + deckIn + 10)}" y2="${sy(0)}" stroke="#7d8a83" stroke-width="2"/>`);
+      lines.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#0d5c63" stroke-width="4"/>`);
+
+      const topX = sx(g.base);
+      const topY = sy(heightIn);
+      lines.push(`<line x1="${topX}" y1="${topY}" x2="${sx(g.base + deckIn)}" y2="${topY}" stroke="#d17a22" stroke-width="6"/>`);
+
+      for (let i = 0; i < ribCount; i += 1) {
+        const k = i / (ribCount - 1);
+        const t = g.theta * k;
+        const x = g.radius * Math.sin(t);
+        const y = g.radius * (1 - Math.cos(t));
+        lines.push(`<line x1="${sx(x)}" y1="${sy(0)}" x2="${sx(x)}" y2="${sy(y)}" stroke="#95a5a6" stroke-width="1" stroke-dasharray="2 3"/>`);
+      }
+
+      lines.push(`<text x="${sx(g.base * 0.42)}" y="${sy(heightIn * 0.55)}" font-size="12" fill="#1f2722">A: ${ribCount} ribs across width ${fmtIn(widthIn)}</text>`);
+      lines.push(`<text x="${sx(g.base + 2)}" y="${sy(heightIn) - 10}" font-size="12" fill="#1f2722">E: lip cap (2x6)</text>`);
+      lines.push(`<text x="${sx(6)}" y="${sy(5)}" font-size="12" fill="#1f2722">B: base skids</text>`);
+      lines.push(`<text x="${sx(g.base * 0.67)}" y="${sy(heightIn * 0.22)}" font-size="12" fill="#1f2722">D: diagonal braces</text>`);
+
+      lines.push(`<text x="${sx(g.base / 2)}" y="${H - 20}" font-size="11" fill="#5a665f">Base = ${fmtIn(g.base)} | Height = ${fmtIn(heightIn)} | Radius = ${fmtIn(g.radius)} | Side plates = ${sideCount}</text>`);
+      svg.innerHTML = lines.join("");
+    }
+
+    document.getElementById("buildBtn").addEventListener("click", buildPlan);
+    buildPlan();
+  </script>
+</body>
+</html>
