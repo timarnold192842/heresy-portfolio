@@ -2422,14 +2422,21 @@
                     }
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
-                
+
+                // Peak capital ever concurrently deployed across this trade set's full
+                // history. Used as a stable "cost basis" reference line so it never
+                // shows more capital than the account has actually held at once, even
+                // when proceeds from closed trades were reinvested into new ones.
+                const peakCapital = calculatePeakCapitalUsed(filteredTrades);
+
                 const portfolioValues = [];
                 const costBasisValues = [];
                 
                 for (const dateStr of dateRange) {
                     const date = new Date(dateStr);
-                    let totalValue = 0;
-                    let totalCostBasis = 0;
+                    let openBasis = 0;
+                    let openMarketValue = 0;
+                    let realizedPnl = 0;
                     
                     for (const trade of filteredTrades) {
                         const entryDate = new Date(trade.entry_date);
@@ -2439,13 +2446,14 @@
                         if (entryDate > date) {
                             continue;
                         }
-                        
-                        // Add cost basis for all entered trades
-                        totalCostBasis += getCostBasis(trade);
+
+                        const basis = getCostBasis(trade);
                         
                         // Calculate value based on trade status at this date
                         if (!exitDate || exitDate > date) {
-                            // Trade is open at this date - use market price
+                            // Trade is open at this date - still deploying its capital.
+                            openBasis += basis;
+
                             let marketKey;
                             if (trade.type === 'stock') {
                                 marketKey = trade.ticker;
@@ -2462,29 +2470,32 @@
                             
                             if (price !== null) {
                                 if (trade.type === 'stock') {
-                                    totalValue += price * trade.quantity;
+                                    openMarketValue += price * trade.quantity;
                                 } else {
-                                    totalValue += price * trade.quantity * 100;
+                                    openMarketValue += price * trade.quantity * 100;
                                 }
                             }
                         } else {
-                            // Trade is closed at this date - use exit value
+                            // Trade already closed by this date - its gain/loss is
+                            // realized and the capital is freed up (no longer tied up).
                             if (trade.exit_price !== null) {
-                                if (trade.type === 'stock') {
-                                    totalValue += trade.exit_price * trade.quantity;
-                                } else {
-                                    totalValue += trade.exit_price * trade.quantity * 100;
-                                }
+                                const exitValue = trade.type === 'stock'
+                                    ? trade.exit_price * trade.quantity
+                                    : trade.exit_price * trade.quantity * 100;
+                                realizedPnl += exitValue - basis;
                             }
                         }
                     }
                     
-                    portfolioValues.push(totalValue);
-                    costBasisValues.push(totalCostBasis);
+                    // Account equity = capital ever deployed + gains/losses booked so
+                    // far (realized) + gains/losses on what's still open (unrealized).
+                    portfolioValues.push(peakCapital + realizedPnl + (openMarketValue - openBasis));
+                    costBasisValues.push(peakCapital);
                 }
                 
                 return { dateRange, portfolioValues, costBasisValues };
             }
+
 
 
 
@@ -2592,6 +2603,54 @@
                 if (openLegs && closedLegs) return 'mixed';
                 if (openLegs) return 'open';
                 return 'closed';
+            }
+
+            // Peak capital ever concurrently deployed across a set of trades, computed
+            // via a cash-flow simulation (outflow = entry basis, inflow = exit value).
+            // Unlike summing every trade's basis, this doesn't double count capital
+            // that was closed out and reinvested into later trades.
+            function calculatePeakCapitalUsed(trades) {
+                const events = [];
+                (trades || []).forEach(t => {
+                    if (!t || !t.entry_date) return;
+                    const entryTime = new Date(t.entry_date).getTime();
+                    if (isNaN(entryTime)) return;
+                    events.push({ time: entryTime, order: 0, delta: -getCostBasis(t) });
+                    if (t.exit_date) {
+                        const exitTime = new Date(t.exit_date).getTime();
+                        if (!isNaN(exitTime)) events.push({ time: exitTime, order: 1, delta: getCurrentValue(t) || 0 });
+                    }
+                });
+                events.sort((a, b) => (a.time - b.time) || (a.order - b.order));
+                let cash = 0, minCash = 0;
+                events.forEach(e => { cash += e.delta; if (cash < minCash) minCash = cash; });
+                return Math.max(0, -minCash);
+            }
+
+            // Real-capital-adjusted totals for a set of trades. "Basis" is the peak
+            // capital ever concurrently deployed (never higher than the account has
+            // actually held at once), and "Value" is that peak plus total realized +
+            // unrealized gain, so reinvested/recycled capital isn't double counted.
+            function calculateCapitalAdjustedTotals(trades, includeCashflow) {
+                let totalGain = 0, totalDayGain = 0, totalYesterdayValue = 0, hasDay = false;
+                (trades || []).forEach(t => {
+                    const basis = getCostBasis(t);
+                    const value = getCurrentValue(t);
+                    const cashflowTotal = includeCashflow ? getTradeCashflowTotal(t) : 0;
+                    const tradeValue = value + cashflowTotal;
+                    totalGain += tradeValue - basis;
+                    const dailyGain = getDailyGain(t);
+                    if (dailyGain.hasData || t.exit_date) {
+                        totalDayGain += dailyGain.absolute;
+                        totalYesterdayValue += tradeValue - dailyGain.absolute;
+                        hasDay = true;
+                    }
+                });
+                const totalBasis = calculatePeakCapitalUsed(trades);
+                const totalValue = totalBasis + totalGain;
+                const totalGainPct = totalBasis !== 0 ? (totalGain / totalBasis) * 100 : 0;
+                const totalDayPct = totalYesterdayValue !== 0 ? (totalDayGain / totalYesterdayValue) * 100 : 0;
+                return { totalBasis, totalValue, totalGain, totalGainPct, totalDayGain, totalDayPct, hasDay };
             }
 
             function getDaysToExpiration(trade) {
@@ -4336,22 +4395,7 @@
                 if (category !== 'all') trades = trades.filter(t => t.category === category);
                 trades = applyMainDateRangeFilter(trades);
 
-                let totalBasis = 0, totalValue = 0, totalDayGain = 0, totalYesterdayValue = 0, hasDay = false;
-                trades.forEach(t => {
-                    const basis = getCostBasis(t);
-                    const value = getCurrentValue(t);
-                    const daily = getDailyGain(t);
-                    totalBasis += basis;
-                    totalValue += value;
-                    if (daily.hasData || t.exit_date) {
-                        totalDayGain += daily.absolute;
-                        totalYesterdayValue += value - daily.absolute;
-                        hasDay = true;
-                    }
-                });
-                const gain = totalValue - totalBasis;
-                const gainPct = totalBasis !== 0 ? (gain / totalBasis) * 100 : 0;
-                const dayPct = totalYesterdayValue !== 0 ? (totalDayGain / totalYesterdayValue) * 100 : 0;
+                const { totalGain: gain, totalGainPct: gainPct, totalDayGain, totalDayPct: dayPct, hasDay } = calculateCapitalAdjustedTotals(trades, false);
                 return { gain, gainPct, dayGain: totalDayGain, dayPct, hasDay };
             }
 
@@ -4747,16 +4791,7 @@
                 if (categoryVal !== 'all') trades = trades.filter(t => t.category === categoryVal);
                 trades = applyMainDateRangeFilter(trades);
 
-                let totalBasis = 0, totalValue = 0, totalDayGain = 0, totalYesterdayValue = 0, hasDay = false;
-                trades.forEach(t => {
-                    totalBasis += getCostBasis(t);
-                    totalValue += getCurrentValue(t);
-                    const dg = getDailyGain(t);
-                    if (dg.hasData || t.exit_date) { totalDayGain += dg.absolute; totalYesterdayValue += getCurrentValue(t) - dg.absolute; hasDay = true; }
-                });
-                const totalGain = totalValue - totalBasis;
-                const totalGainPct = totalBasis ? (totalGain / totalBasis) * 100 : 0;
-                const totalDayPct = totalYesterdayValue ? (totalDayGain / totalYesterdayValue) * 100 : 0;
+                const { totalBasis, totalValue, totalGain, totalGainPct, totalDayGain, totalDayPct, hasDay } = calculateCapitalAdjustedTotals(trades, false);
 
                 updateInlineStats(`dynStats_${id}`, totalBasis, totalValue, totalGain, totalGainPct, totalDayGain, totalDayPct, hasDay, trades.length);
 
@@ -5595,30 +5630,9 @@
                 const hiddenSet = new Set(allColumns.filter(c => !visibleCols.includes(c)));
                 const hide = col => hiddenSet.has(col) ? ' class="column-hidden" style="display:none;"' : '';
 
-                // Calculate summary data
-                let totalBasis = 0;
-                let totalValue = 0;
-                let totalDayGain = 0;
-                let totalYesterdayValue = 0;
-                let hasValidDayData = false;
-
-                filteredTrades.forEach(trade => {
-                    const basis = getCostBasis(trade);
-                    const value = getCurrentValue(trade);
-                    const dailyGain = getDailyGain(trade);
-                    const cashflowTotal = getTradeCashflowTotal(trade);
-                    totalBasis += basis;
-                    totalValue += value + cashflowTotal;
-                    if (dailyGain.hasData || trade.exit_date) {
-                        totalDayGain += dailyGain.absolute;
-                        totalYesterdayValue += (value + cashflowTotal) - dailyGain.absolute;
-                        hasValidDayData = true;
-                    }
-                });
-
-                const totalGain = totalValue - totalBasis;
-                const totalGainPercent = totalBasis !== 0 ? (totalGain / totalBasis) * 100 : 0;
-                const totalDayPercent = totalYesterdayValue !== 0 ? (totalDayGain / totalYesterdayValue) * 100 : 0;
+                // Calculate summary data (peak-capital-adjusted so reinvested/recycled
+                // capital isn't double counted across open + closed trades).
+                const { totalBasis, totalValue, totalGain, totalGainPct: totalGainPercent, totalDayGain, totalDayPct: totalDayPercent, hasDay: hasValidDayData } = calculateCapitalAdjustedTotals(filteredTrades, true);
 
                 updateInlineStats('mainTableStats', totalBasis, totalValue, totalGain, totalGainPercent, totalDayGain, totalDayPercent, hasValidDayData, filteredTrades.length);
 
