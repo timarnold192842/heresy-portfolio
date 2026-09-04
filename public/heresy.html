@@ -2423,17 +2423,30 @@
                     currentDate.setDate(currentDate.getDate() + 1);
                 }
 
-                // Peak capital ever concurrently deployed across this trade set's full
-                // history. Used as a stable "cost basis" reference line so it never
-                // shows more capital than the account has actually held at once, even
-                // when proceeds from closed trades were reinvested into new ones.
-                const peakCapital = calculatePeakCapitalUsed(filteredTrades);
+                // Running peak of concurrently-deployed capital, evaluated only using
+                // events up to each date (not the whole future history). This way the
+                // "Cost Basis" line only steps up at the moment genuinely new capital
+                // gets deployed (an entry outflow not covered by prior exits) rather
+                // than showing the eventual all-time peak retroactively - so if new
+                // money really did enter partway through, you'll see it as a step up
+                // right there instead of it being hidden inside a flat constant.
+                const capitalEvents = buildCapitalEvents(filteredTrades);
+                let eventPtr = 0;
+                let runningCash = 0;
+                let runningMinCash = 0;
 
                 const portfolioValues = [];
                 const costBasisValues = [];
                 
                 for (const dateStr of dateRange) {
                     const date = new Date(dateStr);
+                    const dateEndTime = date.getTime() + (24 * 60 * 60 * 1000 - 1);
+                    while (eventPtr < capitalEvents.length && capitalEvents[eventPtr].time <= dateEndTime) {
+                        runningCash += capitalEvents[eventPtr].delta;
+                        if (runningCash < runningMinCash) runningMinCash = runningCash;
+                        eventPtr++;
+                    }
+                    const peakCapitalToDate = Math.max(0, -runningMinCash);
                     let openBasis = 0;
                     let openMarketValue = 0;
                     let realizedPnl = 0;
@@ -2487,10 +2500,14 @@
                         }
                     }
                     
-                    // Account equity = capital ever deployed + gains/losses booked so
-                    // far (realized) + gains/losses on what's still open (unrealized).
-                    portfolioValues.push(peakCapital + realizedPnl + (openMarketValue - openBasis));
-                    costBasisValues.push(peakCapital);
+                    // Account equity = capital deployed to date + gains/losses booked
+                    // so far (realized) + gains/losses on what's still open
+                    // (unrealized). Reinvested/recycled capital never increases
+                    // peakCapitalToDate; only genuinely new outside capital (an entry
+                    // outflow not covered by prior exits) pushes it up, right when it
+                    // happens - so a deposit shows as a step, not a flat guess.
+                    portfolioValues.push(peakCapitalToDate + realizedPnl + (openMarketValue - openBasis));
+                    costBasisValues.push(peakCapitalToDate);
                 }
                 
                 return { dateRange, portfolioValues, costBasisValues };
@@ -2605,11 +2622,11 @@
                 return 'closed';
             }
 
-            // Peak capital ever concurrently deployed across a set of trades, computed
-            // via a cash-flow simulation (outflow = entry basis, inflow = exit value).
-            // Unlike summing every trade's basis, this doesn't double count capital
-            // that was closed out and reinvested into later trades.
-            function calculatePeakCapitalUsed(trades) {
+            // Cash-flow events for a set of trades: an outflow (-basis) at entry and,
+            // if closed, an inflow (+exit value) at exit. Sorted chronologically with
+            // same-day entries processed before exits (the conservative assumption
+            // that capital is needed before same-day proceeds land).
+            function buildCapitalEvents(trades) {
                 const events = [];
                 (trades || []).forEach(t => {
                     if (!t || !t.entry_date) return;
@@ -2622,8 +2639,16 @@
                     }
                 });
                 events.sort((a, b) => (a.time - b.time) || (a.order - b.order));
+                return events;
+            }
+
+            // Peak capital ever concurrently deployed across a set of trades, computed
+            // via a cash-flow simulation (outflow = entry basis, inflow = exit value).
+            // Unlike summing every trade's basis, this doesn't double count capital
+            // that was closed out and reinvested into later trades.
+            function calculatePeakCapitalUsed(trades) {
                 let cash = 0, minCash = 0;
-                events.forEach(e => { cash += e.delta; if (cash < minCash) minCash = cash; });
+                buildCapitalEvents(trades).forEach(e => { cash += e.delta; if (cash < minCash) minCash = cash; });
                 return Math.max(0, -minCash);
             }
 
