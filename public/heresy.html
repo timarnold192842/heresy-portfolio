@@ -2912,11 +2912,12 @@
             }
 
             // For each date, compute what your capital would be worth if every
-            // trade's cost basis had been used to buy SPY at that trade's entry
-            // date instead. Closed trades lock in at their exit-date SPY value.
-            // This puts the benchmark on the same dollar scale as the portfolio,
-            // and it never goes flat if SPY moves.
-            function calculateBenchmarkOverlayValues(dateRange, filteredTrades) {
+            // trade's cost basis had instead bought SPY at that trade's entry date.
+            // Uses the same running peak-to-date capital + realized/unrealized P&L
+            // model as calculatePortfolioValues (just with SPY-implied gains instead
+            // of the trade's own price), so reinvested capital isn't double counted
+            // here either and the two lines stay on the same dollar scale.
+            function calculateBenchmarkOverlayValues(dateRange, filteredTrades, costBasisValues) {
                 const spyPrices = historicalData[SP500_BENCHMARK_TICKER] || {};
                 if (!spyPrices || Object.keys(spyPrices).length === 0) {
                     console.warn('SPY benchmark: no historical data cached, skipping overlay.');
@@ -2931,7 +2932,9 @@
                 for (let i = 0; i < dateRange.length; i++) {
                     const dateStr = dateRange[i];
                     const date = new Date(dateStr);
-                    let total = 0;
+                    let openBasis = 0;
+                    let openSpyValue = 0;
+                    let realizedSpyPnl = 0;
                     let contributed = false;
 
                     for (const trade of filteredTrades) {
@@ -2946,15 +2949,25 @@
                         if (spyAtEntry == null || spyAtEntry === 0) continue;
 
                         const exitDate = trade.exit_date ? new Date(trade.exit_date) : null;
-                        const referenceDateStr = (exitDate && exitDate <= date) ? trade.exit_date : dateStr;
-                        const spyAtRef = getPriceOnOrBefore(referenceDateStr, spyPrices);
-                        if (spyAtRef == null || spyAtRef === 0) continue;
-
-                        total += basis * (spyAtRef / spyAtEntry);
-                        contributed = true;
+                        if (!exitDate || exitDate > date) {
+                            // Still open - counts toward currently deployed capital.
+                            const spyAtRef = getPriceOnOrBefore(dateStr, spyPrices);
+                            if (spyAtRef == null || spyAtRef === 0) continue;
+                            openBasis += basis;
+                            openSpyValue += basis * (spyAtRef / spyAtEntry);
+                            contributed = true;
+                        } else {
+                            // Already closed by this date - locked in at its exit-date SPY value.
+                            const spyAtExit = getPriceOnOrBefore(trade.exit_date, spyPrices);
+                            if (spyAtExit == null || spyAtExit === 0) continue;
+                            realizedSpyPnl += basis * (spyAtExit / spyAtEntry) - basis;
+                            contributed = true;
+                        }
                     }
 
                     if (contributed) {
+                        const peakCapitalToDate = costBasisValues ? costBasisValues[i] : 0;
+                        const total = peakCapitalToDate + realizedSpyPnl + (openSpyValue - openBasis);
                         values[i] = total;
                         anyNonNull = true;
                         if (previousValue != null && Math.abs(total - previousValue) > 1e-6) {
@@ -5004,7 +5017,7 @@
                         return;
                     }
                     const { dateRange, portfolioValues, costBasisValues } = calculatePortfolioValues(fromDate, toDate, filteredTrades);
-                    const benchmarkValues = calculateBenchmarkOverlayValues(dateRange, filteredTrades);
+                    const benchmarkValues = calculateBenchmarkOverlayValues(dateRange, filteredTrades, costBasisValues);
                     const canvas = document.getElementById(`dynCanvas_${id}`);
                     if (!canvas) return;
                     if (dynamicChartRenderTokens[id] !== renderToken) return;
