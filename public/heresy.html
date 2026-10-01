@@ -3721,10 +3721,23 @@
 
             function parseSchwabHistory(rows) {
                 const txns = []; let cols = null;
-                for (const r of rows) {
+                for (let i = 0; i < rows.length; i++) {
+                    const r = rows[i];
                     if ((r[0] || '').trim() === 'Symbol' && r.some(x => /Time and Date/i.test(x))) { cols = r.map(x => x.trim()); continue; }
                     if (!cols) continue;
-                    if ((r[csvColIdx(cols, 'Status')] || '').trim() !== 'Filled') continue;
+                    const statusIdx = csvColIdx(cols, 'Status');
+                    const stratIdx = csvColIdx(cols, 'Strategy');
+                    const isStratHeader = r2 => stratIdx >= 0 && (r2[stratIdx] || '').trim() !== '';
+                    if (isStratHeader(r)) continue;
+                    let status = (r[statusIdx] || '').trim();
+                    // Multi-leg orders (rolls, diagonals) only carry Status on one leg; inherit it for sibling legs.
+                    if (!status) {
+                        for (let j = i + 1; j < rows.length && !isStratHeader(rows[j]); j++) {
+                            const s = (rows[j][statusIdx] || '').trim();
+                            if (s) { status = s; break; }
+                        }
+                    }
+                    if (status !== 'Filled') continue;
                     const parsed = parseTicker((r[0] || '').trim());
                     if (!parsed) continue;
                     const action = (r[csvColIdx(cols, 'Action')] || '').trim().toLowerCase();
@@ -3732,6 +3745,7 @@
                     if (/sell to open/.test(action)) kind = 'cashflow_open';
                     else if (/buy to open/.test(action)) kind = 'open';
                     else if (/sell to close/.test(action)) kind = 'close';
+                    else if (/buy to close/.test(action)) kind = 'cashflow_close';
                     else if (/^buy/.test(action)) kind = 'open';
                     else if (/^sell/.test(action)) kind = 'close';
                     const dm = (r[csvColIdx(cols, 'Time and Date')] || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
