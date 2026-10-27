@@ -1,14 +1,40 @@
+const path = require('path');
+
+// Load secrets from .env when present (Node >= 20.12); hosted deployments use real env vars.
+if (typeof process.loadEnvFile === 'function') {
+  try {
+    process.loadEnvFile(path.join(__dirname, '.env'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.warn('Could not read .env:', err.message);
+  }
+}
+
 const express = require('express');
 const fs = require('fs/promises');
-const path = require('path');
+const { createPlaidRouter, getPlaidConfig, isConfigured } = require('./plaid');
 
 const app = express();
 const port = process.env.PORT || 3000;
 const statePath = process.env.STATE_FILE || path.join(__dirname, 'data', 'state.json');
+const plaidItemsPath = process.env.PLAID_ITEMS_FILE || path.join(path.dirname(statePath), 'plaid-items.json');
 const writeToken = process.env.APP_WRITE_TOKEN || '';
+// Comma-separated origins allowed to call the API cross-origin (e.g. the GitHub Pages site).
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 
+app.use('/api', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-write-token');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api/plaid', createPlaidRouter({ itemsFile: plaidItemsPath, writeToken }));
 
 async function readStateFile() {
   try {
@@ -85,4 +111,6 @@ app.listen(port, () => {
   if (writeToken) {
     console.log('Write token protection is enabled');
   }
+  const plaid = getPlaidConfig();
+  console.log(isConfigured(plaid) ? `Plaid: ${plaid.env} (linked accounts stored in ${plaidItemsPath})` : 'Plaid: not configured (set PLAID_CLIENT_ID and PLAID_SECRET_<ENV>)');
 });

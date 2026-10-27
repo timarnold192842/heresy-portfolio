@@ -35,13 +35,13 @@
                         </div>
                     </div>
                     <button id="addTradeBtn" type="button" class="btn btn-success" onclick="showAddTradeModal()" title="Add a trade"><span aria-hidden="true">+</span><span class="hide-sm">&nbsp;Add trade</span></button>
-                    <button id="importCsvBtn" type="button" class="btn btn-secondary hide-sm" title="Import positions/history CSVs from your broker" onclick="openCsvImportModal()">Import</button>
+                    <button id="importCsvBtn" type="button" class="btn btn-secondary hide-sm" title="Sync linked accounts or import broker CSVs" onclick="openCsvImportModal()">Import</button>
                     <input type="file" id="importCsvFile" accept=".csv,text/csv" multiple style="display: none;">
                     <input type="file" id="importFile" accept=".json,application/json" style="display: none;">
                     <div class="mobile-menu-wrap">
                         <button id="mobileMenuToggle" class="btn btn-secondary btn-icon-only" type="button" title="More actions" aria-label="More actions" aria-haspopup="menu">&#8943;</button>
                         <div id="mobileMenuPanel" class="mobile-menu-panel menu-panel" role="menu">
-                            <button type="button" data-action="importCsv">Import broker CSV…</button>
+                            <button type="button" data-action="importCsv">Import / sync broker…</button>
                             <button type="button" data-action="import">Restore from JSON backup…</button>
                             <button type="button" data-action="export" id="exportBtn">Export JSON backup</button>
                             <div class="menu-sep"></div>
@@ -1543,6 +1543,33 @@
                 table.trade-table td[data-col="Trade"], table.trade-table td[data-col="Symbol"] { grid-column: 1 / -1; }
                 table.trade-table td[data-col="Category"] { grid-column: 1 / -1; align-items: flex-start; }
             }
+
+            /* ---------- Linked accounts (Plaid) ---------- */
+            .plaid-card { margin-bottom: 14px; padding: 14px; background: linear-gradient(180deg, #f5f8ff, #fbfcfe); border: 1px solid #d9e3fb; border-radius: 12px; }
+            .plaid-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+            .plaid-title { font-size: 15px; }
+            .env-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #92400e; background: #fef3c7; border-radius: 999px; vertical-align: 1px; }
+            .plaid-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+            .plaid-actions[hidden], .env-badge[hidden] { display: none; }
+            .plaid-refresh-opt { font-size: 13px; }
+            .plaid-items { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+            .plaid-items:empty { display: none; }
+            .plaid-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px 14px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+            .plaid-item.needs-reauth { border-color: #fcd34d; background: #fffbeb; }
+            .plaid-item-main { display: flex; flex-direction: column; min-width: 0; }
+            .plaid-item-main .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .plaid-item-actions { display: flex; gap: 6px; }
+            .warn-text { color: #b45309; font-weight: 600; }
+            #plaidMsg:not(:empty) { margin-top: 8px; }
+            .or-divider { display: flex; align-items: center; gap: 10px; margin: 6px 0 14px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+            .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+            @media (max-width: 768px) {
+                .plaid-actions { width: 100%; }
+                .plaid-actions .btn { flex: 1; height: 40px; }
+                .plaid-refresh-opt { flex-basis: 100%; }
+                .plaid-item { grid-template-columns: 1fr auto; }
+                .plaid-item-meta { grid-column: 1 / -1; grid-row: 2; }
+            }
         </style>
         <div id="sectionsContainer">
         <!-- Summary Section -->
@@ -1637,6 +1664,21 @@
                     <button type="button" class="modal-close" onclick="closeCsvImportModal()" aria-label="Close">&times;</button>
                 </div>
                 <div class="modal-body">
+                    <section id="plaidSection" class="plaid-card" aria-labelledby="plaidTitle">
+                        <div class="plaid-head">
+                            <div class="plaid-title"><b id="plaidTitle">Linked accounts</b> <span id="plaidEnvBadge" class="env-badge" hidden></span></div>
+                            <div id="plaidActions" class="plaid-actions" hidden>
+                                <label class="csv-option-check plaid-refresh-opt" title="Ask your broker for up-to-the-minute data first (Investments Refresh). Otherwise Plaid's daily snapshot is used.">
+                                    <input type="checkbox" id="plaidRefreshFirst"> Include today's trades
+                                </label>
+                                <button type="button" id="plaidSyncBtn" class="btn btn-primary btn-sm" onclick="plaidSync()">Sync now</button>
+                                <button type="button" id="plaidLinkBtn" class="btn btn-secondary btn-sm" onclick="plaidLink()">+ Link account</button>
+                            </div>
+                        </div>
+                        <div id="plaidItems" class="plaid-items"></div>
+                        <div id="plaidMsg" class="muted small">Checking for the account-linking server…</div>
+                    </section>
+                    <div class="or-divider"><span>or import CSV files</span></div>
                     <ol class="import-steps">
                         <li><b>Export</b> a <b>Positions</b> CSV (and optionally <b>History</b>) from your broker.</li>
                         <li><b>Drop</b> the files below. The broker and file type are detected automatically.</li>
@@ -3311,7 +3353,12 @@
 
             // ===== LocalStorage + Server Persistence =====
             const LS_KEY = 'heresy_portfolio_state';
-            const STORAGE_API_URL = '/api/state';
+            // Optional absolute API origin (e.g. a Render server) when the page itself is
+            // hosted elsewhere: localStorage.setItem('heresy_api_base', 'https://….onrender.com')
+            function getApiBase() {
+                try { return (localStorage.getItem('heresy_api_base') || '').trim().replace(/\/+$/, ''); } catch (_e) { return ''; }
+            }
+            const STORAGE_API_URL = getApiBase() + '/api/state';
             const WRITE_TOKEN_KEY = 'heresy_write_token';
             const DATA_VERSION = 6; // Bump to force JSON file trades to override localStorage
             const defaultSummaryEntries = [
@@ -3995,6 +4042,7 @@
 
             function openCsvImportModal() {
                 document.getElementById('csvImportOverlay').classList.add('show');
+                loadPlaidStatus();
                 let broker = 'fidelity';
                 try { broker = localStorage.getItem(CSV_BROKER_GUIDE_KEY) || 'fidelity'; } catch (_e) { /* ignore */ }
                 showBrokerGuide(broker);
@@ -4380,7 +4428,8 @@
                 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
                 el.innerHTML = csvImportState.files.map(f => {
                     const ok = !!f.kind;
-                    const detail = ok ? `${f.kind} — ${f.holdings} positions, ${f.transactions} transactions` : 'Unrecognized format (skipped). Supported: Fidelity and Schwab positions/history exports.';
+                    const detail = ok ? `${f.kind} — ${f.holdings} positions, ${f.transactions} transactions`
+                        : (f.error ? esc(f.error) : 'Unrecognized format (skipped). Supported: Fidelity and Schwab positions/history exports.');
                     return `<div class="csv-file ${ok ? 'ok' : 'bad'}"><span class="csv-file-icon">${ok ? '✓' : '✗'}</span><span class="csv-file-name">${esc(f.name)}</span><span class="csv-file-detail">${detail}</span></div>`;
                 }).join('');
             }
@@ -6350,6 +6399,236 @@
                 resortAllTables();
             }
 
+            // ===== Linked accounts (Plaid) =====
+            // The browser only ever sees short-lived link/public tokens; the Plaid secret and
+            // account access tokens stay on the server (see plaid.js).
+            const PLAID_LINK_SCRIPT = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+            const PLAID_PENDING_KEY = 'heresy_plaid_pending_link';
+            let plaidState = { status: 'unknown', env: null, items: [], message: '' };
+            let plaidLinkScriptPromise = null;
+
+            async function plaidFetch(pathPart, options = {}) {
+                const headers = { 'Content-Type': 'application/json' };
+                const token = getWriteToken();
+                if (token) headers['x-write-token'] = token;
+                let res;
+                try {
+                    res = await fetch(getApiBase() + '/api/plaid' + pathPart, { cache: 'no-store', ...options, headers });
+                } catch (_e) {
+                    const err = new Error('Could not reach the portfolio server.');
+                    err.status = 0;
+                    throw err;
+                }
+                const isJson = (res.headers.get('content-type') || '').includes('application/json');
+                const data = isJson ? await res.json().catch(() => ({})) : {};
+                if (!res.ok || !isJson) {
+                    const err = new Error(data.message || `Request failed (${res.status})`);
+                    err.status = res.ok ? 404 : res.status;
+                    err.code = data.error;
+                    throw err;
+                }
+                return data;
+            }
+
+            function loadPlaidLinkScript() {
+                if (window.Plaid) return Promise.resolve();
+                if (!plaidLinkScriptPromise) {
+                    plaidLinkScriptPromise = new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = PLAID_LINK_SCRIPT;
+                        s.onload = () => resolve();
+                        s.onerror = () => { plaidLinkScriptPromise = null; reject(new Error('Could not load Plaid Link. Check your connection.')); };
+                        document.head.appendChild(s);
+                    });
+                }
+                return plaidLinkScriptPromise;
+            }
+
+            async function loadPlaidStatus() {
+                try {
+                    const s = await plaidFetch('/status');
+                    plaidState = { status: s.configured ? 'ready' : 'unconfigured', env: s.env, items: s.items || [], message: '' };
+                } catch (e) {
+                    plaidState = (e.status === 401 || e.status === 403)
+                        ? { status: 'locked', env: null, items: [], message: e.message }
+                        : { status: 'unavailable', env: null, items: [], message: '' };
+                }
+                renderPlaidSection();
+            }
+
+            function renderPlaidSection() {
+                const actions = document.getElementById('plaidActions');
+                const msg = document.getElementById('plaidMsg');
+                const list = document.getElementById('plaidItems');
+                const badge = document.getElementById('plaidEnvBadge');
+                if (!actions || !msg || !list) return;
+                const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                const ready = plaidState.status === 'ready';
+                actions.hidden = !ready;
+                if (badge) {
+                    badge.hidden = !(ready && plaidState.env && plaidState.env !== 'production');
+                    badge.textContent = plaidState.env === 'sandbox' ? 'Sandbox · test data' : (plaidState.env || '');
+                }
+                const syncBtn = document.getElementById('plaidSyncBtn');
+                if (syncBtn) syncBtn.disabled = !plaidState.items.length;
+
+                if (plaidState.status === 'unavailable') {
+                    msg.innerHTML = 'Linking Fidelity or E*TRADE needs the portfolio server, which this page can\'t reach. CSV import below still works.';
+                } else if (plaidState.status === 'locked') {
+                    msg.textContent = `${plaidState.message} (Set it in this browser with localStorage.setItem('heresy_write_token', '…').)`;
+                } else if (plaidState.status === 'unconfigured') {
+                    msg.textContent = 'The server is running, but its Plaid keys are missing. Add them to .env and restart it.';
+                } else if (plaidState.status === 'unknown') {
+                    msg.textContent = 'Checking for the account-linking server…';
+                } else if (!plaidState.items.length) {
+                    msg.textContent = 'Link Fidelity or E*TRADE to pull positions and trade history automatically. Nothing changes until you review and apply.';
+                } else {
+                    msg.textContent = '';
+                }
+
+                list.innerHTML = plaidState.items.map(it => {
+                    const accts = (it.accounts || []).map(a => a.name).join(', ');
+                    const synced = it.last_synced_at
+                        ? 'Synced ' + new Date(it.last_synced_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                        : 'Not synced yet';
+                    return `<div class="plaid-item${it.needs_reauth ? ' needs-reauth' : ''}">
+                        <div class="plaid-item-main">
+                            <b>${esc(it.institution)}</b>
+                            <span class="muted small">${esc(accts)}</span>
+                        </div>
+                        <div class="plaid-item-meta small">${it.needs_reauth ? '<span class="warn-text">Sign-in expired — reconnect to keep syncing</span>' : `<span class="muted">${synced}</span>`}</div>
+                        <div class="plaid-item-actions">
+                            ${it.needs_reauth ? `<button type="button" class="btn btn-primary btn-sm" data-plaid-reconnect="${esc(it.item_id)}">Reconnect</button>` : ''}
+                            <button type="button" class="btn btn-secondary btn-sm" data-plaid-unlink="${esc(it.item_id)}" aria-label="Unlink ${esc(it.institution)}">Unlink</button>
+                        </div>
+                    </div>`;
+                }).join('');
+                list.querySelectorAll('[data-plaid-reconnect]').forEach(b => b.addEventListener('click', () => plaidLink(b.getAttribute('data-plaid-reconnect'))));
+                list.querySelectorAll('[data-plaid-unlink]').forEach(b => b.addEventListener('click', () => plaidUnlink(b.getAttribute('data-plaid-unlink'))));
+            }
+
+            function clearPlaidPending() {
+                try { localStorage.removeItem(PLAID_PENDING_KEY); } catch (_e) { /* ignore */ }
+            }
+
+            function openPlaidLink(token, itemId, receivedRedirectUri) {
+                const config = {
+                    token,
+                    onSuccess: (publicToken, metadata) => plaidOnSuccess(publicToken, metadata, itemId),
+                    onExit: (err) => {
+                        clearPlaidPending();
+                        if (err) showToast(err.display_message || err.error_message || 'Linking stopped.', 'error');
+                    }
+                };
+                if (receivedRedirectUri) config.receivedRedirectUri = receivedRedirectUri;
+                window.Plaid.create(config).open();
+            }
+
+            async function plaidLink(itemId) {
+                const btn = document.getElementById('plaidLinkBtn');
+                if (btn) btn.disabled = true;
+                try {
+                    const [tok] = await Promise.all([
+                        plaidFetch('/link-token', { method: 'POST', body: JSON.stringify(itemId ? { item_id: itemId } : {}) }),
+                        loadPlaidLinkScript()
+                    ]);
+                    // Remembered so an OAuth redirect (Fidelity on phones) can resume the same session.
+                    try { localStorage.setItem(PLAID_PENDING_KEY, JSON.stringify({ token: tok.link_token, itemId: itemId || null, at: Date.now() })); } catch (_e) { /* ignore */ }
+                    openPlaidLink(tok.link_token, itemId || null);
+                } catch (e) {
+                    showToast(e.message || 'Could not start account linking.', 'error');
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            }
+
+            async function plaidOnSuccess(publicToken, metadata, itemId) {
+                clearPlaidPending();
+                const instName = (metadata && metadata.institution && metadata.institution.name) || 'Account';
+                try {
+                    if (itemId) {
+                        showToast(`${instName} reconnected.`, 'success');
+                    } else {
+                        const r = await plaidFetch('/exchange', { method: 'POST', body: JSON.stringify({ public_token: publicToken, institution: metadata && metadata.institution }) });
+                        showToast(r.duplicate_of
+                            ? `${r.item.institution} linked — note you already had a connection to it; you can unlink the older one.`
+                            : `${r.item.institution} linked. Press "Sync now" to review its positions.`, 'success', 7000);
+                    }
+                } catch (e) {
+                    showToast(e.message, 'error');
+                }
+                await loadPlaidStatus();
+            }
+
+            async function plaidUnlink(itemId) {
+                const it = plaidState.items.find(i => i.item_id === itemId);
+                const name = it ? it.institution : 'this account';
+                if (!confirm(`Unlink ${name}?\n\nTrades already in your portfolio are kept. On Plaid's free trial, unlinking does not give back the connection slot.`)) return;
+                try {
+                    await plaidFetch('/items/' + encodeURIComponent(itemId), { method: 'DELETE' });
+                    showToast(`${name} unlinked.`, 'success');
+                } catch (e) {
+                    showToast(e.message, 'error');
+                }
+                await loadPlaidStatus();
+            }
+
+            async function plaidSync() {
+                const btn = document.getElementById('plaidSyncBtn');
+                const refresh = !!(document.getElementById('plaidRefreshFirst') || {}).checked;
+                if (btn) { btn.disabled = true; btn.textContent = refresh ? 'Fetching latest…' : 'Syncing…'; }
+                try {
+                    const r = await plaidFetch('/sync', { method: 'POST', body: JSON.stringify({ refresh }) });
+                    // Replace any earlier linked-sync results so syncing twice doesn't double count.
+                    csvImportState.holdings = csvImportState.holdings.filter(h => !h.fromPlaid);
+                    csvImportState.transactions = csvImportState.transactions.filter(t => !t.fromPlaid);
+                    csvImportState.files = csvImportState.files.filter(f => !f.fromPlaid);
+                    (r.holdings || []).forEach(h => csvImportState.holdings.push({ ...h, fromPlaid: true }));
+                    (r.transactions || []).forEach(t => csvImportState.transactions.push({ ...t, fromPlaid: true }));
+                    (r.items || []).forEach(it => {
+                        let kind = null;
+                        if (it.ok) kind = it.refreshed ? 'Linked account (live)' : (it.refresh_error ? 'Linked account (daily data; live refresh unavailable)' : 'Linked account');
+                        csvImportState.files.push({ fromPlaid: true, name: it.institution, kind, holdings: it.holdings, transactions: it.transactions, error: it.error });
+                    });
+                    renderCsvFileList();
+                    buildAndRenderPlan();
+                    const failed = (r.items || []).filter(i => !i.ok).length;
+                    showToast(failed
+                        ? `${failed} linked account${failed === 1 ? '' : 's'} couldn't sync — see details in the dialog.`
+                        : 'Synced. Review the proposed changes, then Apply.', failed ? 'error' : 'success');
+                    const review = document.getElementById('csvFileList');
+                    if (review) review.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } catch (e) {
+                    showToast(e.message, 'error');
+                } finally {
+                    if (btn) btn.textContent = 'Sync now';
+                    await loadPlaidStatus();
+                }
+            }
+
+            // Plaid OAuth institutions (e.g. Fidelity on mobile) redirect back to this page
+            // with ?oauth_state_id=…; reopen Link with the saved token to finish.
+            async function plaidResumeOAuthIfNeeded() {
+                const url = new URL(window.location.href);
+                if (!url.searchParams.has('oauth_state_id')) return;
+                const received = window.location.href;
+                url.searchParams.delete('oauth_state_id');
+                window.history.replaceState({}, '', url);
+                let pending = null;
+                try { pending = JSON.parse(localStorage.getItem(PLAID_PENDING_KEY) || 'null'); } catch (_e) { pending = null; }
+                if (!pending || !pending.token) {
+                    showToast('Account linking was interrupted. Please try again.', 'error');
+                    return;
+                }
+                openCsvImportModal();
+                try {
+                    await loadPlaidLinkScript();
+                    openPlaidLink(pending.token, pending.itemId, received);
+                } catch (e) {
+                    showToast(e.message, 'error');
+                }
+            }
+
             // ===== Toasts & modal keyboard handling =====
             function showToast(message, kind = 'info', timeoutMs = 4500) {
                 let host = document.getElementById('toastHost');
@@ -6832,6 +7111,8 @@
                 const csvDefCat = document.getElementById('csvDefaultCategory');
                 if (csvDefCat) csvDefCat.addEventListener('change', () => { if (csvImportState.plan) renderCsvPlan(csvImportState.plan); });
                 
+                plaidResumeOAuthIfNeeded();
+
                 // Load URL parameters after other initializations
                 setTimeout(() => {
                     loadFromURLParams();

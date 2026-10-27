@@ -13,7 +13,31 @@ This repo hosts your Heresy trade dashboard and stores portfolio state on the se
 
 ## Importing from your broker
 
-Use **Import** (or **⋯ → Import broker CSV…** on phones). The dialog has per-broker export instructions; Fidelity and Schwab positions/history CSVs are detected automatically. E*TRADE CSVs are not parsed yet — add those trades manually with Account = E*TRADE.
+Use **Import** (or **⋯ → Import / sync broker…** on phones). The dialog has two paths:
+
+- **Linked accounts (Plaid)** — link Fidelity / E*TRADE once, then press **Sync now**. Positions and up to 24 months of trades flow into the same review list as CSV imports; nothing changes until you click **Apply**. Tick **Include today's trades** to ask the broker for live data first (Plaid Investments Refresh); otherwise Plaid's daily snapshot is used. Requires the Node server (see below) — the GitHub Pages copy shows CSV import only.
+- **CSV files** — per-broker export instructions are in the dialog; Fidelity and Schwab positions/history CSVs are detected automatically. E*TRADE CSVs are not parsed yet.
+
+## Plaid account linking
+
+The Plaid secret and the per-account access tokens live only on the server (`plaid.js`); the browser only sees short-lived Link tokens.
+
+1. Put your keys in `.env` (gitignored; loaded automatically on Node ≥ 20.12):
+
+   ```
+   PLAID_CLIENT_ID=...
+   PLAID_SECRET_SANDBOX=...
+   PLAID_SECRET_PRODUCTION=...
+   PLAID_ENV=sandbox          # or production
+   # PLAID_REDIRECT_URI=https://…/   # needed for OAuth banks (Fidelity) on phones; must be allow-listed in the Plaid Dashboard
+   ```
+
+2. `npm start`, open `http://localhost:3000`, then **Import → + Link account**. In Sandbox use `user_good` / `pass_good` at "First Platypus Bank".
+3. Linked logins are stored in `data/plaid-items.json` (gitignored, owner-only permissions; override with `PLAID_ITEMS_FILE`). Links made in Sandbox are separate from Production.
+
+Security: `/api/plaid/*` requires the `x-write-token` header when `APP_WRITE_TOKEN` is set. With no token configured it only answers requests made directly from the same machine (it refuses anything arriving through a proxy), so **set `APP_WRITE_TOKEN` before deploying**. To call a server on another origin (e.g. Render) from the GitHub Pages site, set `ALLOWED_ORIGINS=https://<user>.github.io` on the server and, in the browser, `localStorage.setItem('heresy_api_base', 'https://<app>.onrender.com')`.
+
+Plaid's free Trial plan allows 10 linked logins in total, and unlinking does not free a slot — test in Sandbox, then link each real brokerage once.
 
 ## Local run
 
