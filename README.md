@@ -8,6 +8,12 @@ This repo hosts your Heresy trade dashboard and stores portfolio state on the se
 - Frontend now also syncs every save to `PUT /api/state`.
 - On load, frontend prefers server state from `GET /api/state`.
 - If server is empty, existing local state is pushed up automatically.
+- On static hosting with no `/api/state` backend (e.g. GitHub Pages), sync is detected as unavailable and disabled; data stays in the browser. Transient server errors retry with exponential backoff (up to 60s).
+- The dot next to "Updated" in the header shows sync status: green = synced to server, gray = this browser only, amber = sync problem (hover for details).
+
+## Importing from your broker
+
+Use **Import** (or **⋯ → Import broker CSV…** on phones). The dialog has per-broker export instructions; Fidelity and Schwab positions/history CSVs are detected automatically. E*TRADE CSVs are not parsed yet — add those trades manually with Account = E*TRADE.
 
 ## Local run
 
@@ -85,7 +91,7 @@ The site includes a lightweight client-side password gate:
 
 - First visit prompts for a password.
 - On successful entry, access is remembered in browser local storage.
-- Access remains until browser storage is cleared or you call `heresyLogout()` in the browser console.
+- Access remains until browser storage is cleared, you choose **⋯ → Lock dashboard**, or you call `heresyLogout()` in the browser console.
 
 Important: this is deterrence-level protection only, not strong security. A determined user can inspect front-end code.
 

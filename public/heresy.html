@@ -2,81 +2,70 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#f4f6f9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Portfolio">
     <title>Trade Portfolio</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Pinned so a future major release can't silently break the charts. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="heresy-trades.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="header-section" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 20px;">
-                <h1 style="margin: 0; font-family: 'Courier New', Courier, monospace;">Trade Portfolio</h1>
-                <div id="globalDateRangeControls" style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: 'Courier New', Courier, monospace; font-size: 11px;">
-                    <label>Date From:
-                        <input id="mainDateFrom" type="date" onchange="generateTable()" style="font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; margin-left: 4px;">
-                    </label>
-                    <label>Date To:
-                        <input id="mainDateTo" type="date" onchange="generateTable()" style="font-family: 'Courier New', Courier, monospace; font-size: 11px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; margin-left: 4px;">
-                    </label>
-                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('1M')" style="padding:4px 8px; font-size:11px;">Last Month</button>
-                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('6M')" style="padding:4px 8px; font-size:11px;">Last 6 Months</button>
-                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('1Y')" style="padding:4px 8px; font-size:11px;">Last 1 Year</button>
-                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('2Y')" style="padding:4px 8px; font-size:11px;">Last 2 Years</button>
-                    <button type="button" class="small-panel-btn" onclick="setMainDatePreset('ALL')" style="padding:4px 8px; font-size:11px;">All Time</button>
-                    <button type="button" class="small-panel-btn" onclick="clearMainDateRange()" style="padding:4px 8px; font-size:11px;">Clear Dates</button>
-                </div>
-
-
-
-            </div>
-            <div style="text-align: right; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-                <div id="lastRefresh" style="font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #666; width: 100%; text-align: right; margin-bottom: 4px;">
-                    Last updated: <span id="refreshTime">0m ago</span>
-                </div>
-                <div id="refreshGroup" style="position: relative; display: inline-flex; align-items: stretch;">
-                    <button id="refreshBtn" title="Refresh the rows currently visible in the table" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #007acc; color: white; border: none; border-radius: 4px 0 0 4px; cursor: pointer;">
-                        Refresh
-                    </button>
-                    <button id="refreshMenuBtn" title="Choose what to refresh" style="padding: 8px 8px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #007acc; color: white; border: none; border-left: 1px solid rgba(255,255,255,0.35); border-radius: 0 4px 4px 0; cursor: pointer;">
-                        &#9662;
-                    </button>
-                    <div id="refreshMenu" style="display: none; position: absolute; top: calc(100% + 4px); right: 0; z-index: 100; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 180px; text-align: left; overflow: hidden;">
-                        <button class="refresh-menu-item" data-scope="visible">Visible rows</button>
-                        <button class="refresh-menu-item" data-scope="all">All (without history)</button>
-                        <button class="refresh-menu-item" data-scope="allHistory">All + history</button>
-                        <button class="refresh-menu-item" data-scope="historyOnly">History only</button>
+        <header class="app-header">
+            <div class="app-bar">
+                <div class="app-title">
+                    <h1>Trade Portfolio</h1>
+                    <div id="lastRefresh" class="app-subtitle">
+                        <span id="syncStatus" class="sync-status" title="Saved in this browser"></span>
+                        Updated <span id="refreshTime">—</span>
                     </div>
                 </div>
-                <button id="settingsBtn" onclick="openSettingsModal()" title="API Settings" style="padding: 8px 12px; font-family: 'Courier New', Courier, monospace; font-size: 14px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    &#9881;
-                </button>
-                <button id="addTradeBtn" onclick="showAddTradeModal()" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    + Add Trade
-                </button>
-                <button id="exportBtn" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    Export JSON
-                </button>
-                <label id="importLabel" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; display: inline-block;">
-                    Import JSON
-                    <input type="file" id="importFile" accept=".json" style="display: none;">
-                </label>
-                <button id="importCsvBtn" type="button" title="Import positions/history CSVs from Schwab or Fidelity" onclick="openCsvImportModal()" style="padding: 8px 16px; font-family: 'Courier New', Courier, monospace; font-size: 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    Import CSV
-                </button>
-                <input type="file" id="importCsvFile" accept=".csv,text/csv" multiple style="display: none;">
-                <div class="mobile-menu-wrap">
-                    <button id="mobileMenuToggle" class="mobile-menu-btn" type="button" title="More actions">&#9776;</button>
-                    <div id="mobileMenuPanel" class="mobile-menu-panel">
-                        <button type="button" data-action="addTrade">+ Add Trade</button>
-                        <button type="button" data-action="export">Export JSON</button>
-                        <button type="button" data-action="import">Import JSON</button>
-                        <button type="button" data-action="settings">API Settings</button>
+                <div class="app-actions">
+                    <div id="refreshGroup" class="split-btn">
+                        <button id="refreshBtn" type="button" class="btn btn-primary" title="Refresh prices for the rows currently visible">Refresh</button>
+                        <button id="refreshMenuBtn" type="button" class="btn btn-primary split-btn-caret" title="Refresh options" aria-label="Refresh options" aria-haspopup="menu">&#9662;</button>
+                        <div id="refreshMenu" class="menu-panel" role="menu" style="display: none;">
+                            <button type="button" class="refresh-menu-item" data-scope="visible">Visible rows</button>
+                            <button type="button" class="refresh-menu-item" data-scope="all">All rows</button>
+                            <button type="button" class="refresh-menu-item" data-scope="allHistory">All rows + history</button>
+                            <button type="button" class="refresh-menu-item" data-scope="historyOnly">History only</button>
+                        </div>
+                    </div>
+                    <button id="addTradeBtn" type="button" class="btn btn-success" onclick="showAddTradeModal()" title="Add a trade"><span aria-hidden="true">+</span><span class="hide-sm">&nbsp;Add trade</span></button>
+                    <button id="importCsvBtn" type="button" class="btn btn-secondary hide-sm" title="Import positions/history CSVs from your broker" onclick="openCsvImportModal()">Import</button>
+                    <input type="file" id="importCsvFile" accept=".csv,text/csv" multiple style="display: none;">
+                    <input type="file" id="importFile" accept=".json,application/json" style="display: none;">
+                    <div class="mobile-menu-wrap">
+                        <button id="mobileMenuToggle" class="btn btn-secondary btn-icon-only" type="button" title="More actions" aria-label="More actions" aria-haspopup="menu">&#8943;</button>
+                        <div id="mobileMenuPanel" class="mobile-menu-panel menu-panel" role="menu">
+                            <button type="button" data-action="importCsv">Import broker CSV…</button>
+                            <button type="button" data-action="import">Restore from JSON backup…</button>
+                            <button type="button" data-action="export" id="exportBtn">Export JSON backup</button>
+                            <div class="menu-sep"></div>
+                            <button type="button" data-action="settings">Market data settings</button>
+                            <button type="button" data-action="lock">Lock dashboard</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+            <div id="globalDateRangeControls" class="date-range-bar">
+                <div class="seg" role="group" aria-label="Date range">
+                    <button type="button" class="seg-btn" data-preset="1M" onclick="setMainDatePreset('1M')">1M</button>
+                    <button type="button" class="seg-btn" data-preset="6M" onclick="setMainDatePreset('6M')">6M</button>
+                    <button type="button" class="seg-btn" data-preset="1Y" onclick="setMainDatePreset('1Y')">1Y</button>
+                    <button type="button" class="seg-btn" data-preset="2Y" onclick="setMainDatePreset('2Y')">2Y</button>
+                    <button type="button" class="seg-btn" data-preset="ALL" onclick="setMainDatePreset('ALL')">All</button>
+                </div>
+                <div class="date-inputs">
+                    <label class="date-field"><span>From</span><input id="mainDateFrom" type="date" onchange="generateTable()"></label>
+                    <span class="date-sep" aria-hidden="true">→</span>
+                    <label class="date-field"><span>To</span><input id="mainDateTo" type="date" onchange="generateTable()"></label>
+                </div>
+            </div>
+        </header>
         <style>
             * {
                 box-sizing: border-box;
@@ -94,61 +83,12 @@
                 padding: 14px;
             }
 
-            .mobile-menu-wrap {
-                display: none;
-                position: relative;
-            }
 
-            .mobile-menu-btn {
-                border: 1px solid #9aa5b1;
-                background: #fff;
-                color: #334e68;
-                border-radius: 6px;
-                font-size: 18px;
-                line-height: 1;
-                width: 38px;
-                height: 38px;
-                cursor: pointer;
-            }
 
-            .mobile-menu-panel {
-                display: none;
-                position: absolute;
-                right: 0;
-                top: calc(100% + 6px);
-                z-index: 120;
-                min-width: 170px;
-                background: #fff;
-                border: 1px solid #d3dce6;
-                border-radius: 8px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.18);
-                overflow: hidden;
-            }
 
-            .mobile-menu-panel.show {
-                display: block;
-            }
 
-            .mobile-menu-panel button {
-                width: 100%;
-                border: none;
-                border-bottom: 1px solid #eef2f6;
-                background: #fff;
-                color: #334e68;
-                text-align: left;
-                padding: 9px 11px;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
-                cursor: pointer;
-            }
 
-            .mobile-menu-panel button:last-child {
-                border-bottom: none;
-            }
 
-            .mobile-menu-panel button:hover {
-                background: #f3f7fb;
-            }
 
             #sectionsContainer,
             .draggable-section,
@@ -159,7 +99,7 @@
 
             table.trade-table {
                 border-collapse: collapse;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 12px; /* Reduced from 14px to accommodate more columns */
                 min-width: 100%;
             }
@@ -224,46 +164,11 @@
                 overflow-x: auto;
                 max-width: 100%;
             }
-            
-            #refreshBtn:hover:not(:disabled) {
-                background-color: #005a9e;
-            }
-            
-            #refreshBtn:disabled {
-                background-color: #ccc;
-                cursor: not-allowed;
-            }
 
-            #refreshMenuBtn:hover:not(:disabled) {
-                background-color: #005a9e;
-            }
 
-            #refreshMenuBtn:disabled {
-                background-color: #ccc;
-                cursor: not-allowed;
-            }
 
-            .refresh-menu-item {
-                display: block;
-                width: 100%;
-                padding: 8px 12px;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
-                text-align: left;
-                background: #fff;
-                color: #333;
-                border: none;
-                border-bottom: 1px solid #eee;
-                cursor: pointer;
-            }
 
-            .refresh-menu-item:last-child {
-                border-bottom: none;
-            }
 
-            .refresh-menu-item:hover {
-                background-color: #f0f7ff;
-            }
             
             .trade-row.closed {
                 opacity: 0.6;
@@ -301,7 +206,7 @@
             
             /* Dropdown styles */
             .dropdown-content {
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
             }
             
             .dropdown-content label {
@@ -392,184 +297,6 @@
                 border: 1px solid #c8e6c9;
             }
             
-            /* Mobile responsive styles */
-            @media (max-width: 768px) {
-                .container {
-                    padding: 10px;
-                    margin: 0;
-                }
-                
-                .header-section {
-                    flex-direction: column !important;
-                    gap: 15px !important;
-                    align-items: stretch !important;
-                }
-                
-                .header-section > div:first-child {
-                    flex-direction: column !important;
-                    align-items: stretch !important;
-                    gap: 15px !important;
-                }
-                
-                .filter-controls, .category-filter-controls, .column-controls {
-                    flex-direction: column !important;
-                    align-items: stretch !important;
-                    gap: 8px !important;
-                }
-                
-                .filter-controls label, .category-filter-controls label, .column-controls label {
-                    font-weight: bold;
-                    margin-bottom: 5px;
-                }
-                
-                .filter-controls select, .category-filter-controls button, .column-controls button {
-                    width: 100%;
-                    padding: 8px 12px !important;
-                    font-size: 14px !important;
-                }
-                
-                #refreshBtn {
-                    width: 100%;
-                    padding: 12px !important;
-                    font-size: 14px !important;
-                    margin-top: 10px;
-                }
-                
-                /* Mobile table styles */
-                #tableContainer {
-                    overflow-x: auto;
-                    -webkit-overflow-scrolling: touch;
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                }
-                
-                table.trade-table {
-                    min-width: 800px; /* Ensure minimum width for horizontal scroll */
-                    font-size: 11px !important;
-                }
-                
-                table.trade-table th, table.trade-table td {
-                    padding: 3px 4px !important;
-                    font-size: 10px !important;
-                    white-space: nowrap;
-                }
-                
-                table.trade-table th {
-                    font-size: 9px !important;
-                    position: sticky;
-                    top: 0;
-                    z-index: 10;
-                    background-color: #f2f2f2 !important;
-                }
-                
-                /* Hide less important columns on mobile by default */
-                .mobile-hide {
-                    display: none !important;
-                }
-                
-                /* Category pills smaller on mobile */
-                .category-pill {
-                    font-size: 8px !important;
-                    padding: 1px 6px !important;
-                }
-                
-                /* Charts section mobile */
-                .charts-section {
-                    margin-top: 20px !important;
-                }
-                
-                .chart-controls {
-                    flex-direction: column !important;
-                    align-items: stretch !important;
-                    gap: 15px !important;
-                }
-                
-                .chart-controls > div:first-child {
-                    flex-direction: column !important;
-                    align-items: stretch !important;
-                    gap: 10px !important;
-                }
-                
-                .chart-controls h2 {
-                    font-size: 16px !important;
-                    margin-bottom: 10px !important;
-                }
-                
-                .chart-controls div {
-                    flex-direction: column !important;
-                    align-items: stretch !important;
-                }
-                
-                .chart-controls select, .chart-controls button {
-                    width: 100%;
-                    padding: 8px 12px !important;
-                    margin-bottom: 5px;
-                }
-                
-                .chart-container {
-                    height: 300px !important;
-                    padding: 10px !important;
-                }
-                
-                /* Dropdown styles for mobile */
-                .dropdown .dropdown-content {
-                    position: fixed !important;
-                    top: 50% !important;
-                    left: 50% !important;
-                    transform: translate(-50%, -50%) !important;
-                    width: 90vw !important;
-                    max-width: 400px !important;
-                    max-height: 70vh !important;
-                    z-index: 9999 !important;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-                }
-                
-                /* Mobile overlay for dropdowns */
-                .mobile-overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100vw;
-                    height: 100vh;
-                    background: rgba(0,0,0,0.5);
-                    z-index: 9998;
-                    display: none;
-                }
-                
-                .mobile-overlay.active {
-                    display: block;
-                }
-            }
-            
-            @media (max-width: 480px) {
-                .container {
-                    padding: 5px;
-                }
-                
-                h1 {
-                    font-size: 18px !important;
-                }
-                
-                table.trade-table {
-                    font-size: 10px !important;
-                }
-                
-                table.trade-table th, table.trade-table td {
-                    padding: 2px 3px !important;
-                    font-size: 9px !important;
-                }
-                
-                .category-pill {
-                    font-size: 7px !important;
-                    padding: 1px 4px !important;
-                }
-                
-                .chart-container {
-                    height: 250px !important;
-                    padding: 5px !important;
-                }
-            }
-
             /* Summary section */
             .summary-section {
                 margin-bottom: 20px;
@@ -582,7 +309,7 @@
             }
             .summary-section .section-bar h2 {
                 margin: 0;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 16px;
             }
             .summary-cards {
@@ -597,7 +324,7 @@
                 padding: 12px 14px;
                 min-width: 0;
                 min-height: 124px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 position: relative;
                 box-shadow: 0 1px 4px rgba(0,0,0,0.08);
                 display: flex;
@@ -651,7 +378,7 @@
 
             .add-summary-btn, .add-element-btn {
                 padding: 4px 10px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 11px;
                 border: 1px dashed #aaa;
                 border-radius: 4px;
@@ -675,7 +402,7 @@
             }
             .collapsible-section .section-bar h2 {
                 margin: 0;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 16px;
             }
             .collapsible-section .toggle-icon {
@@ -708,12 +435,12 @@
                 flex-wrap: wrap;
             }
             .dynamic-panel .panel-bar label {
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 11px;
                 color: #666;
             }
             .dynamic-panel .panel-bar select, .dynamic-panel .panel-bar button {
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 11px;
                 padding: 3px 6px;
                 border: 1px solid #ddd;
@@ -757,7 +484,7 @@
                 box-shadow: 0 2px 8px rgba(0,0,0,0.15);
                 padding: 10px;
                 z-index: 100;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 11px;
                 min-width: 180px;
             }
@@ -804,7 +531,7 @@
 
             /* Section title rename */
             .section-title-input {
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 16px;
                 font-weight: bold;
                 border: 1px solid #007acc;
@@ -820,7 +547,7 @@
                 display: inline-flex;
                 gap: 14px;
                 margin-left: 14px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 11px;
                 color: #666;
                 align-items: baseline;
@@ -856,7 +583,7 @@
                 font-size: 10px;
                 cursor: pointer;
                 white-space: nowrap;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
             }
             .panel-col-menu label:hover { background: #f0f0f0; }
             .mobile-col-presets {
@@ -866,7 +593,7 @@
             .mobile-col-presets-toggle {
                 width: 100%;
                 padding: 4px 6px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 10px;
                 background: #f5f5f5;
                 border: 1px solid #ccc;
@@ -885,7 +612,7 @@
             }
             .mobile-col-presets-menu button {
                 padding: 4px 6px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 10px;
                 background: #fff;
                 border: 1px solid #ccc;
@@ -900,7 +627,7 @@
                 width: 100%;
                 margin-top: 4px;
                 padding: 3px 6px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 10px;
                 background: #f0f0f0;
                 border: 1px solid #ccc;
@@ -979,7 +706,7 @@
                 padding: 20px;
                 min-width: 380px;
                 max-width: 500px;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: var(--font-ui);
                 font-size: 12px;
             }
             .trade-modal h3 {
@@ -1010,233 +737,6 @@
                 border-radius: 4px;
             }
 
-            /* Mobile refinement pass */
-            @media (max-width: 768px) {
-                body {
-                    background: #eef1f4;
-                }
-
-                .container {
-                    padding: 10px 8px 26px;
-                }
-
-                .header-section {
-                    margin-bottom: 14px !important;
-                }
-
-                .header-section > div:last-child {
-                    display: grid !important;
-                    grid-template-columns: auto auto 1fr auto;
-                    align-items: center !important;
-                    justify-content: flex-start !important;
-                    gap: 8px !important;
-                }
-
-                #autoRefreshCheckbox {
-                    grid-column: 2 / 3;
-                    justify-self: center;
-                    margin: 0 !important;
-                    width: 18px;
-                    height: 18px;
-                    accent-color: #007acc;
-                }
-
-                label[for="autoRefreshCheckbox"] {
-                    grid-column: 3 / 4;
-                    justify-self: start;
-                    margin: 0 !important;
-                    font-size: 13px !important;
-                    white-space: nowrap;
-                }
-
-                #refreshGroup {
-                    grid-column: 1 / 2;
-                }
-
-                .mobile-menu-wrap {
-                    display: block;
-                    grid-column: 4 / 5;
-                }
-
-                .header-section > div:last-child > button,
-                .header-section > div:last-child > label,
-                .header-section > div:last-child > #refreshGroup {
-                    max-width: none;
-                    margin: 0 !important;
-                }
-
-                .header-section > div:last-child > button,
-                .header-section > div:last-child > label {
-                    min-height: 0;
-                }
-
-                #refreshGroup {
-                    display: inline-flex !important;
-                }
-
-                #refreshBtn {
-                    width: 100% !important;
-                    margin-top: 0 !important;
-                    padding: 0 10px !important;
-                }
-
-                #settingsBtn {
-                    display: none !important;
-                }
-
-                #addTradeBtn,
-                #exportBtn,
-                #importLabel {
-                    display: none !important;
-                }
-
-                #lastRefresh {
-                    grid-column: 1 / -1;
-                    text-align: left !important;
-                    font-size: 11px !important;
-                }
-
-                .summary-cards {
-                    display: flex;
-                    flex-wrap: nowrap;
-                    gap: 10px;
-                    overflow-x: auto;
-                    -webkit-overflow-scrolling: touch;
-                    scroll-snap-type: x mandatory;
-                    padding-bottom: 4px;
-                }
-
-                .summary-card {
-                    flex: 0 0 82%;
-                    max-width: 82%;
-                    padding: 10px;
-                    border-radius: 10px;
-                    min-height: 142px;
-                    scroll-snap-align: start;
-                }
-
-                .summary-card .card-label {
-                    font-size: 12px;
-                    margin-bottom: 8px;
-                }
-
-                .summary-card .card-metric {
-                    font-size: 13px;
-                    margin-bottom: 2px;
-                }
-
-                .summary-card .card-metrics {
-                    gap: 6px;
-                }
-
-                .summary-card .card-metric .metric-label {
-                    margin-right: 8px;
-                }
-
-                .summary-card .card-metric .metric-value {
-                    font-size: 13px;
-                }
-
-                .inline-stats {
-                    display: none;
-                }
-
-                .dynamic-panel {
-                    margin-top: 12px;
-                }
-
-                .dynamic-panel .panel-bar {
-                    padding: 8px 10px;
-                    gap: 6px;
-                    align-items: center;
-                }
-
-                .dynamic-panel .panel-bar .section-title {
-                    font-size: 15px;
-                    flex: 1 1 auto;
-                    margin-right: auto;
-                }
-
-                .dynamic-panel .panel-bar .toggle-icon {
-                    margin-right: 2px;
-                }
-
-                .dynamic-panel .panel-bar .remove-panel {
-                    margin-left: auto;
-                }
-
-                .dynamic-panel .panel-bar label,
-                .dynamic-panel .panel-bar .panel-col-dropdown,
-                .dynamic-panel .panel-bar > button:not(.remove-panel) {
-                    flex: 1 1 calc(50% - 6px);
-                }
-
-                .panel-col-menu .mobile-col-presets {
-                    display: block;
-                }
-
-                .dynamic-panel .panel-bar label {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: 6px;
-                }
-
-                .dynamic-panel .panel-bar label select {
-                    width: 100%;
-                }
-
-                .dynamic-panel .panel-bar .panel-col-dropdown > button {
-                    width: 100%;
-                }
-
-                .dynamic-panel .panel-bar select,
-                .dynamic-panel .panel-bar button {
-                    font-size: 12px;
-                    padding: 5px 8px;
-                }
-
-                .dynamic-panel .panel-content {
-                    padding: 8px;
-                }
-
-                .dynamic-panel .panel-content .chart-container {
-                    height: 250px;
-                }
-
-                .add-element-row {
-                    gap: 6px;
-                    flex-wrap: wrap;
-                }
-
-                .add-element-btn {
-                    flex: 1 1 130px;
-                    min-height: 36px;
-                }
-            }
-
-            @media (max-width: 520px) {
-                .summary-card {
-                    flex-basis: 88%;
-                    max-width: 88%;
-                }
-
-                .header-section > div:last-child > button,
-                .header-section > div:last-child > label,
-                .header-section > div:last-child > #refreshGroup {
-                    flex: 1 1 100%;
-                }
-
-                #settingsBtn {
-                    display: none !important;
-                }
-
-                .dynamic-panel .panel-bar label,
-                .dynamic-panel .panel-bar .panel-col-dropdown,
-                .dynamic-panel .panel-bar > button:not(.remove-panel) {
-                    flex: 1 1 100%;
-                }
-            }
             .trade-modal .option-fields { display: none; }
             .trade-modal .option-fields.show { display: contents; }
             .trade-modal .ticker-row {
@@ -1295,6 +795,754 @@
             .trade-modal .btn-cancel { background: #6c757d; color: white; }
             .trade-modal .btn-cancel:hover { background: #5a6268; }
             .col-defaults-btn:hover { background: #e0e0e0; }
+
+            /* =====================================================================
+               UX layer — design tokens, components, responsive/mobile layout.
+               Kept last so it takes precedence over the legacy rules above.
+               ===================================================================== */
+            :root {
+                --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                --bg: #f4f6f9;
+                --surface: #ffffff;
+                --surface-2: #f8fafc;
+                --border: #e4e8ee;
+                --border-strong: #cfd6df;
+                --text: #1f2933;
+                --muted: #697887;
+                --primary: #2563eb;
+                --primary-hover: #1d4ed8;
+                --success: #16a34a;
+                --success-hover: #15803d;
+                --danger: #dc2626;
+                --pos: #15803d;
+                --pos-bg: #effbf3;
+                --neg: #b91c1c;
+                --neg-bg: #fdf1f1;
+                --radius: 12px;
+                --radius-sm: 8px;
+                --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.07);
+                --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.18);
+            }
+
+            html { -webkit-text-size-adjust: 100%; }
+            body {
+                font-family: var(--font-ui);
+                font-size: 14px;
+                line-height: 1.4;
+                background: var(--bg);
+                color: var(--text);
+                -webkit-font-smoothing: antialiased;
+            }
+            body:has(.trade-modal-overlay.show) { overflow: hidden; }
+            button, input, select, textarea { font-family: inherit; }
+            .container {
+                max-width: 1440px;
+                padding: 16px max(20px, env(safe-area-inset-right)) 48px max(20px, env(safe-area-inset-left));
+            }
+            .muted { color: var(--muted); }
+            .small { font-size: 12px; }
+
+            /* ---------- Buttons ---------- */
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                height: 38px;
+                padding: 0 14px;
+                font-size: 14px;
+                font-weight: 600;
+                line-height: 1;
+                white-space: nowrap;
+                border: 1px solid transparent;
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+                transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+            }
+            .btn:focus-visible, .seg-btn:focus-visible, .menu-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+            .btn:disabled { opacity: 0.65; cursor: not-allowed; }
+            .btn-primary { background: var(--primary); color: #fff; }
+            .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+            .btn-success { background: var(--success); color: #fff; }
+            .btn-success:hover:not(:disabled) { background: var(--success-hover); }
+            .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+            .btn-secondary:hover:not(:disabled) { background: #f1f5f9; }
+            .btn-sm { height: 32px; padding: 0 10px; font-size: 13px; }
+            .btn-icon-only { width: 38px; padding: 0; font-size: 20px; }
+
+            /* ---------- App header ---------- */
+            .app-header { margin-bottom: 18px; }
+            .app-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .app-title { min-width: 0; }
+            .app-title h1 {
+                margin: 0;
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -0.015em;
+                white-space: nowrap;
+            }
+            .app-subtitle {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 2px;
+                font-size: 12px;
+                color: var(--muted);
+                white-space: nowrap;
+            }
+            .sync-status {
+                flex: none;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #cbd2d9;
+            }
+            .sync-status.sync-ok { background: var(--success); }
+            .sync-status.sync-local { background: #94a3b8; }
+            .sync-status.sync-error { background: #f59e0b; }
+            .app-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex: none;
+            }
+            .split-btn { position: relative; display: inline-flex; }
+            .split-btn #refreshBtn {
+                min-width: 92px;
+                max-width: 240px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+            }
+            .split-btn .split-btn-caret {
+                padding: 0 10px;
+                border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+                border-left: 1px solid rgba(255, 255, 255, 0.35);
+            }
+            .split-btn.auto-on #refreshBtn { box-shadow: inset 0 -3px 0 #93c5fd; }
+
+            /* Dropdown menus (refresh options + overflow actions) */
+            .mobile-menu-wrap { position: relative; display: block; }
+            .menu-panel {
+                position: absolute;
+                top: calc(100% + 6px);
+                right: 0;
+                z-index: 300;
+                min-width: 230px;
+                padding: 6px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                box-shadow: var(--shadow-lg);
+                text-align: left;
+            }
+            #refreshMenu { left: 0; right: auto; }
+            .mobile-menu-panel { display: none; }
+            .mobile-menu-panel.show { display: block; }
+            .menu-panel button,
+            .refresh-menu-item {
+                display: block;
+                width: 100%;
+                padding: 10px 12px;
+                font-size: 14px;
+                color: var(--text);
+                text-align: left;
+                background: none;
+                border: 0;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+            .menu-panel button:hover, .refresh-menu-item:hover { background: #f1f5f9; }
+            .refresh-menu-item:disabled { opacity: 0.5; cursor: default; background: none; }
+            .menu-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+            .menu-toggle {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+                cursor: pointer;
+                border-radius: 6px;
+            }
+            .menu-toggle:hover { background: #f1f5f9; }
+            .menu-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+
+            /* Date range bar */
+            .date-range-bar {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px 16px;
+                margin-top: 14px;
+            }
+            .seg {
+                display: inline-flex;
+                gap: 2px;
+                padding: 3px;
+                background: #e8ecf1;
+                border-radius: 10px;
+            }
+            .seg-btn {
+                min-height: 32px;
+                padding: 0 14px;
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--muted);
+                background: transparent;
+                border: 0;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+            .seg-btn:hover { color: var(--text); }
+            .seg-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12); }
+            .date-inputs { display: flex; align-items: center; gap: 8px; }
+            .date-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+            .date-field input {
+                height: 34px;
+                padding: 0 8px;
+                font-size: 13px;
+                color: var(--text);
+                background: var(--surface);
+                border: 1px solid var(--border-strong);
+                border-radius: var(--radius-sm);
+            }
+            .date-range-bar.has-custom-range .date-field input { border-color: var(--primary); }
+            .date-sep { color: var(--muted); }
+
+            /* ---------- Sections & summary cards ---------- */
+            .section-bar h2, .section-title { font-family: var(--font-ui); font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+            .summary-section .section-bar h2 { font-size: 16px; }
+            .add-summary-btn, .add-element-btn {
+                height: 30px;
+                padding: 0 12px;
+                font-size: 13px;
+                color: var(--muted);
+                background: transparent;
+                border: 1px dashed var(--border-strong);
+                border-radius: var(--radius-sm);
+            }
+            .add-element-btn { height: 40px; padding: 0 18px; }
+            .add-summary-btn:hover, .add-element-btn:hover { color: var(--primary); border-color: var(--primary); background: #f5f8ff; }
+            .summary-cards { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+            .summary-card {
+                min-height: 0;
+                padding: 14px 16px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+            }
+            .summary-card .card-label { margin-bottom: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+            .summary-card .card-label .remove-card { width: 24px; height: 24px; font-size: 18px; color: #a0aab4; border-radius: 6px; }
+            .summary-card .card-label .remove-card:hover { background: #fef2f2; }
+            .summary-card .card-metrics { margin-top: 0; gap: 6px; }
+            .summary-card .card-metric { font-size: 13px; flex-wrap: wrap; column-gap: 8px; }
+            .summary-card .card-metric .metric-label { color: var(--muted); margin-right: 0; }
+            .summary-card .card-metric .metric-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+            .summary-card .card-metric .metric-value.positive { color: var(--pos); }
+            .summary-card .card-metric .metric-value.negative { color: var(--neg); }
+
+            /* ---------- Panels ---------- */
+            .dynamic-panel {
+                margin-top: 16px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+            }
+            .dynamic-panel .panel-bar {
+                gap: 8px 12px;
+                padding: 10px 14px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+                border-radius: var(--radius) var(--radius) 0 0;
+            }
+            .collapsible-section.collapsed .panel-bar { border-bottom: 0; border-radius: var(--radius); }
+            .collapsible-section .section-bar { margin-bottom: 0; }
+            .dynamic-panel .panel-bar label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+            .dynamic-panel .panel-bar select,
+            .dynamic-panel .panel-bar button,
+            .small-panel-btn {
+                height: 32px;
+                padding: 0 10px;
+                font-size: 13px;
+                color: var(--text);
+                background: var(--surface);
+                border: 1px solid var(--border-strong);
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+            }
+            .dynamic-panel .panel-bar button:hover, .small-panel-btn:hover { background: #f1f5f9; }
+            .dynamic-panel .panel-bar button[id^="dynUpdateBtn_"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+            .dynamic-panel .panel-bar button[id^="dynUpdateBtn_"]:disabled { opacity: 0.7; }
+            .dynamic-panel .panel-bar .remove-panel {
+                width: 32px;
+                height: 32px;
+                padding: 0;
+                font-size: 20px;
+                color: #a0aab4;
+                background: none;
+                border: 0;
+            }
+            .dynamic-panel .panel-bar .remove-panel:hover { color: var(--danger); background: #fef2f2; }
+            .dynamic-panel .panel-content { padding: 0; }
+            .dynamic-panel .panel-content .chart-container { margin: 12px; border-color: var(--border) !important; border-radius: var(--radius-sm) !important; }
+            .inline-stats { gap: 14px; font-size: 12px; color: var(--muted); }
+            .inline-stats .stat-label { color: var(--muted); }
+            .inline-stats .stat-value { color: var(--text); font-variant-numeric: tabular-nums; }
+            .inline-stats .stat-value.positive { color: var(--pos); }
+            .inline-stats .stat-value.negative { color: var(--neg); }
+            .dynamic-panel .panel-bar > .sort-control { display: none; }
+            .sort-dir-btn { width: 36px; padding: 0 !important; font-size: 16px !important; }
+            .panel-col-menu { padding: 6px; border-color: var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 170px; max-height: 360px; }
+            .panel-col-menu label { display: flex; align-items: center; gap: 6px; padding: 5px 6px; font-size: 13px; color: var(--text); border-radius: 6px; }
+            .panel-col-menu label:hover { background: #f1f5f9; }
+            .col-defaults-btn, .mobile-col-presets-toggle, .mobile-col-presets-menu button { font-size: 12px; padding: 6px 8px; border-radius: 6px; }
+            .add-element-row { margin-top: 16px; }
+
+            /* ---------- Trade table (desktop) ---------- */
+            #tableContainer, .panel-content > div[id^="dynTable_"] { overflow-x: auto; }
+            table.trade-table { font-size: 13px; font-variant-numeric: tabular-nums; }
+            table.trade-table th, table.trade-table td {
+                padding: 8px 10px;
+                border: 0;
+                border-bottom: 1px solid #edf0f4;
+            }
+            table.trade-table th {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--muted);
+                background: var(--surface-2);
+                border-bottom: 1px solid var(--border);
+            }
+            table.trade-table th:hover { color: var(--text); }
+            table.trade-table .summary-row td { background: var(--surface-2); font-weight: 700; border-bottom: 1px solid var(--border); }
+            table.trade-table .positive, table.trade-table .summary-row td.positive { background-color: var(--pos-bg); color: var(--pos); }
+            table.trade-table .negative, table.trade-table .summary-row td.negative { background-color: var(--neg-bg); color: var(--neg); }
+            table.trade-table .expires-soon { background-color: #fff4e5; color: #b45309; }
+            table.trade-table tr:hover td:not(.summary-row td) { background-color: #f5f8fc; }
+            table.trade-table tr:hover td.positive:not(.summary-row td) { background-color: #e3f7ea; }
+            table.trade-table tr:hover td.negative:not(.summary-row td) { background-color: #fbe4e4; }
+            table.trade-table tr:hover td.expires-soon:not(.summary-row td) { background-color: #ffecd1; }
+            table.trade-table .summary-row td:hover { background-color: var(--surface-2); }
+            table.trade-table .summary-row td.positive:hover { background-color: var(--pos-bg); }
+            table.trade-table .summary-row td.negative:hover { background-color: var(--neg-bg); }
+            table.trade-table th .resize-handle::after { background: transparent; }
+            table.trade-table th:hover .resize-handle::after { background: #cbd5e1; }
+            tr.no-data td { background-color: #fff5f5 !important; }
+            .category-pill {
+                padding: 2px 9px;
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 0.01em;
+                text-transform: none;
+                color: hsl(var(--pill-h, 215) 55% 30%);
+                background: hsl(var(--pill-h, 215) 75% 95%);
+                border: 1px solid hsl(var(--pill-h, 215) 60% 86%);
+                border-radius: 999px;
+            }
+            .edit-trade-btn, .sell-portion-btn, .refresh-trade-btn, .delete-trade-btn { opacity: 0.55; font-size: 15px; padding: 3px 7px; }
+            .action-col { width: 120px; }
+
+            /* ---------- Modals ---------- */
+            .trade-modal-overlay {
+                padding: 16px;
+                background: rgba(15, 23, 42, 0.45);
+            }
+            .trade-modal {
+                min-width: 0;
+                width: min(580px, 100%);
+                max-width: 580px;
+                max-height: calc(100vh - 32px);
+                max-height: calc(100dvh - 32px);
+                overflow: auto;
+                padding: 20px 22px;
+                font-family: var(--font-ui);
+                font-size: 14px;
+                border-radius: 14px;
+                box-shadow: var(--shadow-lg);
+            }
+            .trade-modal h3 { margin: 0 0 16px; font-size: 18px; font-weight: 700; }
+            .trade-modal .form-row { flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+            .trade-modal .form-field { flex: 1 1 150px; min-width: 0; }
+            .trade-modal .form-field label { margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+            .trade-modal .form-field input,
+            .trade-modal .form-field select,
+            .trade-modal select,
+            .trade-modal input[type="text"],
+            .trade-modal input[type="number"],
+            .trade-modal input[type="date"] {
+                height: 38px;
+                padding: 0 10px;
+                font-size: 14px;
+                color: var(--text);
+                background: var(--surface);
+                border: 1px solid var(--border-strong);
+                border-radius: var(--radius-sm);
+                min-width: 0;
+            }
+            .trade-modal input:focus, .trade-modal select:focus, .trade-modal textarea:focus, .date-field input:focus {
+                outline: none;
+                border-color: var(--primary);
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+            }
+            .trade-modal .ticker-row { align-items: stretch; }
+            .trade-modal .btn-lookup { width: 38px; height: 38px; line-height: 38px; font-size: 17px; border-radius: var(--radius-sm); }
+            .trade-modal .price-display { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border-color: var(--border); }
+            .trade-modal .modal-buttons { margin-top: 18px; gap: 10px; }
+            .trade-modal .modal-buttons button,
+            .trade-modal .btn-add,
+            .trade-modal .btn-cancel,
+            .trade-modal .btn-test {
+                height: 40px;
+                padding: 0 18px;
+                font-size: 14px;
+                font-weight: 600;
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+            }
+            .trade-modal .form-field.field-wide { flex: 2 1 260px; }
+            .trade-modal .btn-add, .trade-modal .modal-buttons .btn-add { color: #fff; background: var(--success); border: 1px solid var(--success); }
+            .trade-modal .btn-add:hover, .trade-modal .modal-buttons .btn-add:hover { background: var(--success-hover); }
+            .trade-modal .btn-cancel, .trade-modal .modal-buttons .btn-cancel { color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); }
+            .trade-modal .btn-cancel:hover, .trade-modal .modal-buttons .btn-cancel:hover { background: #f1f5f9; }
+            .trade-modal .btn-test, .trade-modal .modal-buttons .btn-test { color: var(--primary); background: #eff4ff; border: 1px solid #c7d7fe; }
+
+            /* Large modal with header/body/footer (CSV import) */
+            .trade-modal.modal-lg {
+                display: flex;
+                flex-direction: column;
+                width: min(980px, 100%);
+                max-width: 980px;
+                padding: 0;
+                overflow: hidden;
+            }
+            .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+            .modal-header h3 { margin: 0; }
+            .modal-close { width: 36px; height: 36px; font-size: 24px; line-height: 1; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+            .modal-close:hover { background: #f1f5f9; color: var(--text); }
+            .modal-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px; }
+            .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface); }
+
+            .import-steps { margin: 0 0 14px; padding-left: 20px; color: #3e4c59; line-height: 1.55; }
+            .broker-guide { margin-bottom: 14px; padding: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+            .broker-guide .seg { margin-bottom: 8px; }
+            .broker-guide-body p { margin: 6px 0; font-size: 13px; line-height: 1.5; color: #3e4c59; }
+            .broker-guide-body code { font-size: 12px; background: #eef1f5; padding: 1px 5px; border-radius: 4px; }
+            .dropzone {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                padding: 22px 16px;
+                text-align: center;
+                color: #3e4c59;
+                background: #fbfcfe;
+                border: 2px dashed var(--border-strong);
+                border-radius: 12px;
+                cursor: pointer;
+                transition: background-color 0.15s, border-color 0.15s;
+            }
+            .dropzone:hover, .dropzone.dragging { background: #f0f6ff; border-color: var(--primary); }
+            .dropzone-icon { font-size: 24px; color: var(--primary); }
+            .dropzone .link { color: var(--primary); text-decoration: underline; }
+            #csvLastImport { margin-top: 8px; }
+            .csv-file-list { margin: 10px 0; display: flex; flex-direction: column; gap: 4px; }
+            .csv-file { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 8px 10px; font-size: 13px; border-radius: 8px; }
+            .csv-file.ok { background: #f0fdf4; }
+            .csv-file.bad { background: #fef2f2; }
+            .csv-file-icon { font-weight: 700; }
+            .csv-file.ok .csv-file-icon { color: var(--pos); }
+            .csv-file.bad .csv-file-icon { color: var(--neg); }
+            .csv-file-name { font-weight: 600; word-break: break-all; }
+            .csv-file-detail { color: var(--muted); }
+            .tv-paste { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+            .tv-paste summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #3e4c59; }
+            .tv-paste textarea { width: 100%; margin-top: 10px; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); resize: vertical; }
+            .trade-modal .tv-paste-actions { justify-content: flex-start; gap: 8px; margin: 8px 0 0; }
+            .csv-options { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; margin: 14px 0; }
+            .csv-option { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+            .csv-option-check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text); cursor: pointer; }
+            .csv-option-check input { width: 18px; height: 18px; accent-color: var(--primary); }
+            .inline-select { display: flex; gap: 6px; align-items: center; }
+            .csv-review { border-top: 1px solid var(--border); padding-top: 10px; }
+            .empty-state { padding: 22px; text-align: center; color: var(--muted); }
+            .csv-plan-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+            .csv-plan-table th, .csv-plan-table td { padding: 7px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid #edf0f4; }
+            .csv-plan-table th { font-size: 12px; color: var(--muted); }
+            .csv-plan-table select { height: 32px !important; font-size: 13px !important; }
+
+            /* ---------- Toasts ---------- */
+            .toast-host {
+                position: fixed;
+                left: 50%;
+                bottom: calc(20px + env(safe-area-inset-bottom));
+                z-index: 100000;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                width: min(480px, calc(100vw - 24px));
+                transform: translateX(-50%);
+                pointer-events: none;
+            }
+            .toast {
+                padding: 12px 16px;
+                font-size: 14px;
+                color: #fff;
+                background: #1f2933;
+                border-radius: 10px;
+                box-shadow: var(--shadow-lg);
+                opacity: 0;
+                transform: translateY(8px);
+                transition: opacity 0.25s, transform 0.25s;
+            }
+            .toast.show { opacity: 1; transform: none; }
+            .toast-success { background: #166534; }
+            .toast-error { background: #991b1b; }
+
+            @media (hover: none) {
+                table.trade-table tr:hover td:not(.summary-row td) { background-color: transparent; }
+                .edit-trade-btn, .sell-portion-btn, .refresh-trade-btn, .delete-trade-btn { opacity: 0.85; }
+            }
+
+            /* =====================================================================
+               Mobile / narrow layout
+               ===================================================================== */
+            @media (max-width: 768px) {
+                .container { padding: 12px max(12px, env(safe-area-inset-right)) 40px max(12px, env(safe-area-inset-left)); }
+                .hide-sm { display: none !important; }
+                .app-header { margin-bottom: 14px; }
+                .app-title h1 { font-size: 19px; }
+                .app-actions { gap: 6px; }
+                .split-btn #refreshBtn { min-width: 80px; max-width: 132px; padding: 0 12px; }
+                #addTradeBtn { width: 38px; padding: 0; font-size: 22px; font-weight: 500; }
+                .date-range-bar { gap: 8px; margin-top: 12px; }
+                .seg { width: 100%; }
+                .seg-btn { flex: 1; padding: 0 6px; min-height: 34px; }
+                .date-inputs { width: 100%; }
+                .date-field { flex: 1; min-width: 0; }
+                .date-field input { flex: 1; min-width: 0; width: 100%; font-size: 16px; height: 38px; }
+
+                /* Summary: compact two-up grid instead of a hidden carousel */
+                .summary-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+                .summary-card { padding: 10px 12px; border-radius: 10px; }
+                .summary-card .card-label { margin-bottom: 6px; font-size: 12px; }
+                .summary-card .card-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .summary-card .card-metrics { gap: 2px; }
+                .summary-card .card-metric { font-size: 11px; }
+                .summary-card .card-metric .metric-value { font-size: 13px; }
+
+                /* Panel header: title row, stats row, then a 2-column grid of controls */
+                .dynamic-panel { margin-top: 12px; }
+                .dynamic-panel .panel-bar { padding: 10px 12px; gap: 8px; }
+                .dynamic-panel .panel-bar > * { order: 3; }
+                .dynamic-panel .panel-bar > .toggle-icon,
+                .dynamic-panel .panel-bar > .section-title { order: 0; }
+                .dynamic-panel .panel-bar > .section-title { flex: 1 1 auto; min-width: 0; font-size: 16px; }
+                .dynamic-panel .panel-bar > .remove-panel { order: 1; margin-left: auto; }
+                .dynamic-panel .panel-bar > .inline-stats {
+                    order: 2;
+                    display: flex;
+                    flex-wrap: wrap;
+                    flex: 1 1 100%;
+                    gap: 4px 14px;
+                    margin: 0;
+                    font-size: 12px;
+                }
+                .collapsible-section.collapsed .panel-bar > :not(.toggle-icon):not(.section-title):not(.remove-panel):not(.inline-stats) { display: none; }
+                .dynamic-panel .panel-bar > label,
+                .dynamic-panel .panel-bar > .panel-col-dropdown,
+                .dynamic-panel .panel-bar > button:not(.remove-panel) {
+                    flex: 1 1 calc(50% - 4px);
+                    min-width: 0;
+                }
+                .dynamic-panel .panel-bar > label { flex-direction: column; align-items: stretch; gap: 3px; font-size: 11px; font-weight: 600; }
+                .dynamic-panel .panel-bar select { width: 100%; height: 38px; font-size: 16px; }
+                .dynamic-panel .panel-bar .panel-col-dropdown > button,
+                .dynamic-panel .panel-bar > button:not(.remove-panel) { width: 100%; height: 38px; align-self: flex-end; }
+                .dynamic-panel .panel-bar > .small-panel-btn { display: none; }
+                .dynamic-panel .panel-bar > .sort-control { display: flex; }
+                .sort-row { display: flex; gap: 6px; }
+                .sort-row select { flex: 1; min-width: 0; }
+                .sort-row .sort-dir-btn { flex: none; height: 38px; width: 42px; }
+                /* Cards always use the full trade name as their title, even if only "Symbol" is selected. */
+                table.trade-table td[data-col="Trade"] { display: flex !important; }
+                table.trade-table td[data-col="Symbol"] { display: none !important; }
+                .panel-col-dropdown { position: static; }
+                .panel-col-menu {
+                    position: fixed;
+                    top: auto;
+                    left: 12px;
+                    right: 12px;
+                    bottom: calc(12px + env(safe-area-inset-bottom));
+                    z-index: 400;
+                    max-height: 60vh;
+                }
+                .panel-col-menu .mobile-col-presets { display: block; }
+                .panel-col-menu label { padding: 9px 8px; font-size: 15px; }
+                .panel-col-menu input[type="checkbox"] { width: 18px; height: 18px; }
+
+                /* Trade tables collapse into cards */
+                .dynamic-panel .panel-content { padding: 10px; }
+                #tableContainer, .panel-content > div[id^="dynTable_"] { overflow: visible; border: 0; }
+                table.trade-table {
+                    display: block;
+                    width: 100% !important;
+                    min-width: 0 !important;
+                    table-layout: auto !important;
+                    font-size: 14px;
+                }
+                table.trade-table thead, table.trade-table tbody { display: block; }
+                table.trade-table thead tr:first-child, table.trade-table tr.summary-row { display: none; }
+                table.trade-table tr {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 10px 12px;
+                    margin-bottom: 10px;
+                    padding: 12px;
+                    background: var(--surface);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    box-shadow: var(--shadow);
+                }
+                table.trade-table tr:last-child { margin-bottom: 0; }
+                table.trade-table td {
+                    display: flex;
+                    flex-direction: column;
+                    min-width: 0;
+                    padding: 0;
+                    font-size: 14px;
+                    white-space: normal;
+                    text-align: left !important;
+                    border: 0 !important;
+                    background: none;
+                    overflow: visible;
+                    overflow-wrap: anywhere;
+                }
+                table.trade-table td::before {
+                    content: attr(data-col);
+                    margin-bottom: 2px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.02em;
+                    color: var(--muted);
+                    text-transform: uppercase;
+                }
+                table.trade-table td[data-col="Trade"],
+                table.trade-table td[data-col="Symbol"] {
+                    grid-column: 1 / 3;
+                    order: -2;
+                    font-size: 16px;
+                    font-weight: 700;
+                    letter-spacing: -0.01em;
+                }
+                table.trade-table td[data-col="Trade"] { order: -3; }
+                table.trade-table td[data-col="Trade"]::before,
+                table.trade-table td[data-col="Symbol"]::before,
+                table.trade-table td[data-col="Category"]::before { display: none; }
+                table.trade-table td[data-col="Category"] { order: -1; grid-column: 3; align-items: flex-end; justify-content: center; }
+                table.trade-table td[data-col="Category"] .category-pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+                table.trade-table td.positive, table.trade-table td.negative, table.trade-table td.expires-soon { background: none !important; }
+                table.trade-table td.positive { color: var(--pos); font-weight: 600; }
+                table.trade-table td.negative { color: var(--neg); font-weight: 600; }
+                table.trade-table td.expires-soon { color: #b45309; font-weight: 600; }
+                table.trade-table tr.no-data { border-color: #fecaca; background: #fffafa; }
+                table.trade-table tr.no-data td { background: none !important; }
+                table.trade-table td.action-col {
+                    grid-column: 1 / -1;
+                    flex-direction: row;
+                    justify-content: flex-end;
+                    gap: 6px;
+                    width: auto;
+                    padding-top: 8px;
+                    border-top: 1px solid #edf0f4 !important;
+                }
+                table.trade-table td.action-col::before { display: none; }
+                table.trade-table td.action-col button {
+                    min-width: 44px;
+                    height: 36px;
+                    font-size: 16px;
+                    opacity: 1;
+                    background: var(--surface-2);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                }
+
+                .dynamic-panel .panel-content .chart-container { height: 280px !important; padding: 8px !important; margin: 0; }
+
+                .add-element-row { gap: 8px; }
+                .add-element-btn { flex: 1 1 0; }
+
+                /* Modals become bottom sheets */
+                .trade-modal-overlay { align-items: flex-end; padding: 0; }
+                .trade-modal,
+                .trade-modal.modal-lg {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    max-height: 92vh;
+                    max-height: 92dvh;
+                    border-radius: 16px 16px 0 0;
+                    padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
+                }
+                .trade-modal.modal-lg { padding: 0; }
+                .trade-modal .form-field { flex: 1 1 calc(50% - 6px); }
+                .trade-modal .form-field.field-wide { flex-basis: 100%; }
+                .trade-modal .form-field input,
+                .trade-modal .form-field select,
+                .trade-modal select,
+                .trade-modal input[type="text"],
+                .trade-modal input[type="number"],
+                .trade-modal input[type="date"],
+                .trade-modal textarea { font-size: 16px; height: 42px; }
+                .trade-modal textarea { height: auto; }
+                .trade-modal .modal-buttons {
+                    position: sticky;
+                    bottom: calc(-16px - env(safe-area-inset-bottom));
+                    margin: 16px -16px calc(-16px - env(safe-area-inset-bottom));
+                    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+                    background: var(--surface);
+                    border-top: 1px solid var(--border);
+                }
+                .trade-modal .modal-buttons button { flex: 1; height: 44px; }
+                .modal-header { padding: 14px 16px; }
+                .modal-body { padding: 14px 16px; }
+                .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+                .modal-footer .btn { flex: 1; height: 44px; }
+                .broker-guide .seg { width: 100%; }
+
+                /* CSV review table stacks into cards */
+                .csv-plan-table thead { display: none; }
+                .csv-plan-table, .csv-plan-table tbody { display: block; }
+                .csv-plan-table tr {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 6px 14px;
+                    margin-bottom: 8px;
+                    padding: 10px 12px;
+                    border: 1px solid var(--border);
+                    border-radius: 10px;
+                }
+                .csv-plan-table td { display: flex; flex-direction: column; flex: 1 1 40%; padding: 0; border: 0; }
+                .csv-plan-table td[data-label]::before { content: attr(data-label); font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+                .csv-plan-table td:nth-child(1), .csv-plan-table td:nth-child(2) { flex: 0 0 auto; }
+                .csv-plan-table td:nth-child(3) { flex: 1 1 50%; font-weight: 700; }
+                .csv-plan-table td:nth-child(-n+3)::before { display: none; }
+                .csv-plan-table td:last-child { flex-basis: 100%; }
+            }
+
+            @media (max-width: 360px) {
+                .app-title h1 { font-size: 17px; }
+                .split-btn #refreshBtn { min-width: 70px; max-width: 100px; }
+                table.trade-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                table.trade-table td[data-col="Trade"], table.trade-table td[data-col="Symbol"] { grid-column: 1 / -1; }
+                table.trade-table td[data-col="Category"] { grid-column: 1 / -1; align-items: flex-start; }
+            }
         </style>
         <div id="sectionsContainer">
         <!-- Summary Section -->
@@ -1333,7 +1581,10 @@
                 <label>Category:
                     <select id="mainCategory" data-role="category" onchange="generateTable()"></select>
                 </label>
-                <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
+                <button type="button" class="small-panel-btn" onclick="openCategoryManager()">Manage</button>
+                <label class="sort-control">Sort:
+                    <span class="sort-row"><select class="sort-select" onchange="setSortColumn(this.value)" aria-label="Sort trades by"></select><button type="button" class="sort-dir-btn" onclick="toggleSortDirection()" title="Toggle sort direction" aria-label="Toggle sort direction">↓</button></span>
+                </label>
                 <div class="panel-col-dropdown">
                     <button onclick="togglePanelColMenu('main', event)" style="cursor:pointer;">Columns ▼</button>
                     <div class="panel-col-menu" id="dynColMenu_main">
@@ -1380,40 +1631,68 @@
 
         <!-- CSV Import Modal -->
         <div class="trade-modal-overlay" id="csvImportOverlay" onclick="if(event.target===this)closeCsvImportModal()">
-            <div class="trade-modal" style="max-width: 900px; width: 92%; max-height: 88vh; display: flex; flex-direction: column;">
-                <h3>Import Positions &amp; History (CSV)</h3>
-                <p style="margin: 0 0 10px 0; color: #555; line-height: 1.4;">
-                    Drop or choose one or more CSVs exported from <b>Schwab</b> or <b>Fidelity</b> (Positions and/or History).
-                    Positions reconcile your current holdings; History fills in entry dates. Nothing is changed until you click <b>Apply</b>.
-                </p>
-                <div id="csvDrop" style="border: 2px dashed #bbb; border-radius: 6px; padding: 16px; text-align: center; color: #666; cursor: pointer; margin-bottom: 10px;">
-                    Drag CSV files here, or <span style="color:#17a2b8; text-decoration: underline;">click to choose</span>
+            <div class="trade-modal modal-lg csv-modal" role="dialog" aria-modal="true" aria-labelledby="csvImportTitle">
+                <div class="modal-header">
+                    <h3 id="csvImportTitle">Import from your broker</h3>
+                    <button type="button" class="modal-close" onclick="closeCsvImportModal()" aria-label="Close">&times;</button>
                 </div>
-                <div style="margin-bottom: 10px; padding: 10px; background: #f5f7fb; border: 1px solid #dfe8f4; border-radius: 6px;">
-                    <div style="font-weight: 600; margin-bottom: 6px;">Paste a TradingView open-trades table</div>
-                    <textarea id="csvPasteTable" rows="4" style="width: 100%; box-sizing: border-box; resize: vertical; font-family: 'Courier New', Courier, monospace; font-size: 12px;" placeholder="Paste the exact rows from a 'Table of All Open Trades' page here..."></textarea>
-                    <div class="form-row" style="justify-content: flex-start; gap: 8px; margin-top: 8px;">
-                        <button onclick="parseTradingViewGroundTruth()" style="padding: 8px 12px; background:#007acc; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Parse table</button>
-                        <button type="button" onclick="document.getElementById('csvPasteTable').value=''" style="padding: 8px 12px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Clear</button>
+                <div class="modal-body">
+                    <ol class="import-steps">
+                        <li><b>Export</b> a <b>Positions</b> CSV (and optionally <b>History</b>) from your broker.</li>
+                        <li><b>Drop</b> the files below. The broker and file type are detected automatically.</li>
+                        <li><b>Review</b> the proposed changes. Nothing changes until you click <b>Apply</b>.</li>
+                    </ol>
+                    <div class="broker-guide">
+                        <div class="seg broker-tabs" role="tablist" aria-label="Export instructions">
+                            <button type="button" class="seg-btn active" data-broker="fidelity" onclick="showBrokerGuide('fidelity')">Fidelity</button>
+                            <button type="button" class="seg-btn" data-broker="schwab" onclick="showBrokerGuide('schwab')">Schwab</button>
+                            <button type="button" class="seg-btn" data-broker="etrade" onclick="showBrokerGuide('etrade')">E*TRADE</button>
+                        </div>
+                        <div class="broker-guide-body" data-broker="fidelity">
+                            <p><b>Positions:</b> Portfolio &rarr; <i>Positions</i> tab &rarr; <i>Download</i> (top-right icon). Choose <i>All accounts</i> to reconcile everything at once.</p>
+                            <p><b>History</b> (fills in entry dates, closes, and short-premium legs): Portfolio &rarr; <i>Activity &amp; Orders</i> &rarr; <i>History</i> &rarr; pick a date range &rarr; <i>Download</i> (<code>Accounts_History.csv</code>).</p>
+                        </div>
+                        <div class="broker-guide-body" data-broker="schwab" hidden>
+                            <p><b>Positions:</b> Accounts &rarr; <i>Positions</i> &rarr; <i>Export</i> (top-right icon) &rarr; CSV (<code>All-Accounts-Positions-….csv</code>).</p>
+                            <p><b>History</b>: Trade &rarr; <i>Order Status</i> &rarr; show <i>Filled</i> orders for your date range &rarr; <i>Export</i>. Multi-leg rolls are handled automatically.</p>
+                        </div>
+                        <div class="broker-guide-body" data-broker="etrade" hidden>
+                            <p>E*TRADE CSV exports aren't recognized yet. For now, add E*TRADE trades manually (set <i>Account</i> to E*TRADE) or paste a TradingView table below.</p>
+                        </div>
+                    </div>
+                    <div id="csvDrop" class="dropzone" role="button" tabindex="0" aria-label="Choose CSV files to import">
+                        <div class="dropzone-icon" aria-hidden="true">&#8682;</div>
+                        <div><b>Drop CSV files here</b> or <span class="link">choose files</span></div>
+                        <div class="muted small">You can select several files at once (e.g. positions + history).</div>
+                    </div>
+                    <div id="csvLastImport" class="muted small"></div>
+                    <div id="csvFileList" class="csv-file-list"></div>
+                    <details class="tv-paste">
+                        <summary>Or paste a TradingView open-trades table</summary>
+                        <textarea id="csvPasteTable" rows="4" placeholder="Paste the exact rows from a 'Table of All Open Trades' page here..."></textarea>
+                        <div class="form-row tv-paste-actions">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="parseTradingViewGroundTruth()">Parse table</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('csvPasteTable').value=''">Clear</button>
+                        </div>
+                    </details>
+                    <div class="csv-options">
+                        <label class="csv-option">Default category for new trades
+                            <span class="inline-select">
+                                <select id="csvDefaultCategory"></select>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="openCategoryManager()">Manage</button>
+                            </span>
+                        </label>
+                        <label class="csv-option csv-option-check" title="Keep the same ticker in different broker accounts as separate trades. The account is taken from the CSV.">
+                            <input type="checkbox" id="csvMatchAccount" checked> Keep accounts separate
+                        </label>
+                    </div>
+                    <div id="csvReview" class="csv-review">
+                        <div class="empty-state">No files loaded yet.</div>
                     </div>
                 </div>
-                <div id="csvFileList" style="margin-bottom: 10px; font-size: 12px; color: #444;"></div>
-                <div class="form-row" style="align-items: center; gap: 12px; margin-bottom: 10px;">
-                    <label>Default category for new trades:
-                        <select id="csvDefaultCategory"></select>
-                    </label>
-                    <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
-                    <label style="display:inline-flex; align-items:center; gap:6px;" title="Keep the same ticker in different broker accounts as separate trades. The account is taken from the CSV (Schwab or Fidelity).">
-                        <input type="checkbox" id="csvMatchAccount" checked> Separate by account (from CSV)
-                    </label>
-                    <span style="color:#888; font-size:11px;">☑ = apply · ☐ = discard</span>
-                </div>
-                <div id="csvReview" style="overflow: auto; flex: 1; border-top: 1px solid #eee; padding-top: 8px;">
-                    <div style="color:#888; text-align:center; padding: 20px;">No files loaded yet.</div>
-                </div>
-                <div class="form-row" style="justify-content: flex-end; gap: 10px; margin-top: 12px;">
-                    <button onclick="closeCsvImportModal()" style="padding: 8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Cancel</button>
-                    <button id="csvApplyBtn" onclick="applyCsvImport()" disabled style="padding: 8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-family:inherit;">Apply selected</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeCsvImportModal()">Cancel</button>
+                    <button type="button" id="csvApplyBtn" class="btn btn-success" onclick="applyCsvImport()" disabled>Apply selected</button>
                 </div>
             </div>
         </div>
@@ -1441,11 +1720,11 @@
             <div class="trade-modal">
                 <h3 id="tradeModalTitle">Add Trade</h3>
                 <div class="form-row">
-                    <div class="form-field" style="flex:1">
-                        <label>Trade</label>
+                    <div class="form-field field-wide">
+                        <label for="tradeTicker">Trade</label>
                         <div class="ticker-row">
                             <div class="form-field">
-                                <input type="text" id="tradeTicker" placeholder="Ticker or Option">
+                                <input type="text" id="tradeTicker" placeholder="AAPL or AAPL 01/15/2027 200 C" autocomplete="off" autocapitalize="characters" spellcheck="false">
                             </div>
                             <button class="btn-lookup btn-lookup-empty" id="tickerLookupBtn" onclick="lookupTradePrice()" title="Look up price">&#x21bb;</button>
                         </div>
@@ -1461,7 +1740,7 @@
                         <label>Category</label>
                         <div style="display:flex; gap:6px; align-items:center;">
                             <select id="tradeCategory" style="flex:1;"></select>
-                            <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
+                            <button type="button" class="small-panel-btn" onclick="openCategoryManager()">Manage</button>
                         </div>
                     </div>
                 </div>
@@ -1501,6 +1780,7 @@
                             <option value="Unknown">Unknown</option>
                             <option value="Fidelity">Fidelity</option>
                             <option value="Schwab">Schwab</option>
+                            <option value="E*TRADE">E*TRADE</option>
                         </select>
                     </div>
                     <div class="form-field">
@@ -1536,7 +1816,7 @@
         <div class="trade-modal-overlay" id="sellPortionOverlay" onclick="if(event.target===this)closeSellPortionModal()">
             <div class="trade-modal">
                 <h3>Sell Portion</h3>
-                <div id="sellPortionInfo" style="font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #555; margin-bottom: 12px;"></div>
+                <div id="sellPortionInfo" style="font-family: var(--font-ui); font-size: 12px; color: #555; margin-bottom: 12px;"></div>
                 <div class="form-row">
                     <div class="form-field">
                         <label>Quantity to Sell</label>
@@ -1561,7 +1841,7 @@
         <!-- API Settings Modal -->
         <div class="trade-modal-overlay" id="settingsModalOverlay" onclick="if(event.target===this)closeSettingsModal()">
             <div class="trade-modal">
-                <h3>API Settings</h3>
+                <h3>Market data settings</h3>
                 <div class="form-row">
                     <div class="form-field" style="flex:1;">
                         <label>Data Provider</label>
@@ -1571,7 +1851,7 @@
                 <div id="settingsProviderFields"></div>
                 <div id="settingsTestResult" class="price-display" style="margin-top:10px;"></div>
                 <div class="modal-buttons" style="justify-content: space-between;">
-                    <button class="btn-cancel" type="button" onclick="testApiConnection()" style="background:#007acc;">Test API</button>
+                    <button class="btn-test" type="button" onclick="testApiConnection()">Test connection</button>
                     <div style="display:flex; gap:8px;">
                         <button class="btn-cancel" onclick="closeSettingsModal()">Cancel</button>
                         <button class="btn-add" onclick="saveSettingsFromModal()">Save</button>
@@ -1586,6 +1866,10 @@
             <button class="add-element-btn" onclick="addDynamicChart()">+ Add Chart</button>
         </div>
         <script>
+            if (window.Chart && Chart.defaults) {
+                Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+                Chart.defaults.color = '#52606d';
+            }
             // Compact trade constructors
             function Option(entry_date, ticker, expiration, strike, option_type, quantity, entry_price, optsOrExitDate, ...rest) {
                 if (optsOrExitDate != null && typeof optsOrExitDate === 'object') {
@@ -2832,8 +3116,8 @@
 
             function toDateInputValue(date) {
                 const d = new Date(date);
-                d.setHours(0, 0, 0, 0);
-                return d.toISOString().split('T')[0];
+                const pad = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
             }
 
             function setMainDatePreset(preset) {
@@ -2859,6 +3143,32 @@
                 dateFromInput.value = toDateInputValue(fromDate);
                 dateToInput.value = toDateInputValue(toDate);
                 generateTable();
+            }
+
+            function getActiveDatePreset() {
+                const { fromValue, toValue } = getMainDateRange();
+                if (!fromValue && !toValue) return 'ALL';
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (toValue !== toDateInputValue(today)) return null;
+                const offsets = { '1M': d => d.setMonth(d.getMonth() - 1), '6M': d => d.setMonth(d.getMonth() - 6), '1Y': d => d.setFullYear(d.getFullYear() - 1), '2Y': d => d.setFullYear(d.getFullYear() - 2) };
+                for (const [key, shift] of Object.entries(offsets)) {
+                    const d = new Date(today);
+                    shift(d);
+                    if (fromValue === toDateInputValue(d)) return key;
+                }
+                return null;
+            }
+
+            function updateDatePresetUI() {
+                const active = getActiveDatePreset();
+                document.querySelectorAll('#globalDateRangeControls .seg-btn').forEach(btn => {
+                    const on = btn.getAttribute('data-preset') === active;
+                    btn.classList.toggle('active', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                const bar = document.getElementById('globalDateRangeControls');
+                if (bar) bar.classList.toggle('has-custom-range', active === null);
             }
 
             function getEarliestTradeDateString() {
@@ -3014,6 +3324,17 @@
             let saveSyncTimer = null;
             let saveSyncInFlight = false;
             let pendingRemoteState = null;
+            // null = not yet probed, true = /api/state backend reachable, false = static hosting (no backend)
+            let remoteSyncAvailable = null;
+            let remoteSyncFailures = 0;
+
+            function setSyncStatus(kind, message) {
+                const el = document.getElementById('syncStatus');
+                if (!el) return;
+                el.className = `sync-status sync-${kind}`;
+                el.title = message;
+                el.setAttribute('aria-label', message);
+            }
 
             function getWriteToken() {
                 try {
@@ -3037,15 +3358,21 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Remote save failed (${response.status})`);
+                    const err = new Error(`Remote save failed (${response.status})`);
+                    err.status = response.status;
+                    throw err;
                 }
             }
 
-            function queueRemoteSave(state) {
+            function queueRemoteSave(state, delayMs = 600) {
+                if (remoteSyncAvailable === false) return;
                 pendingRemoteState = state;
                 if (saveSyncTimer) clearTimeout(saveSyncTimer);
+                // Honor exponential backoff after failures, even when new edits arrive.
+                if (remoteSyncFailures) delayMs = Math.max(delayMs, Math.min(60000, 2000 * 2 ** (remoteSyncFailures - 1)));
 
                 saveSyncTimer = setTimeout(async () => {
+                    saveSyncTimer = null;
                     if (saveSyncInFlight || !pendingRemoteState) return;
                     saveSyncInFlight = true;
                     const stateToPush = pendingRemoteState;
@@ -3053,15 +3380,26 @@
 
                     try {
                         await pushStateToServer(stateToPush);
+                        remoteSyncFailures = 0;
+                        setSyncStatus('ok', 'Synced to server');
                     } catch (e) {
-                        // Keep local persistence working even if network sync fails.
-                        console.warn('Cloud sync failed; local state still saved.', e);
-                        pendingRemoteState = stateToPush;
+                        if ([404, 405, 501].includes(e.status)) {
+                            // No storage backend on this host (e.g. GitHub Pages) — stop trying.
+                            remoteSyncAvailable = false;
+                            setSyncStatus('local', 'Saved in this browser (no sync server on this host)');
+                        } else if (e.status === 401 || e.status === 403) {
+                            setSyncStatus('error', 'Server rejected the save (write token missing or wrong). Saved in this browser only.');
+                        } else {
+                            remoteSyncFailures++;
+                            setSyncStatus('error', 'Sync failed — will retry. Saved in this browser.');
+                            console.warn('Cloud sync failed; local state still saved.', e);
+                            pendingRemoteState = pendingRemoteState || stateToPush;
+                        }
                     } finally {
                         saveSyncInFlight = false;
                         if (pendingRemoteState) queueRemoteSave(pendingRemoteState);
                     }
-                }, 600);
+                }, delayMs);
             }
 
             // ===== Section Management =====
@@ -3464,23 +3802,32 @@
                         console.warn('Failed to parse local saved state:', e);
                     }
 
+                    let remoteReachable = false;
                     try {
                         const response = await fetch(STORAGE_API_URL, { cache: 'no-store' });
-                        if (response.ok) {
+                        const isJson = (response.headers.get('content-type') || '').includes('application/json');
+                        if (response.ok && isJson) {
+                            remoteReachable = true;
+                            remoteSyncAvailable = true;
+                            setSyncStatus('ok', 'Synced to server');
                             const remoteDoc = await response.json();
                             const remoteState = remoteDoc && remoteDoc.state ? remoteDoc.state : null;
                             if (remoteState && Array.isArray(remoteState.trades)) {
                                 localStorage.setItem(LS_KEY, JSON.stringify(remoteState));
                                 return remoteState;
                             }
+                        } else if ([404, 405, 501].includes(response.status) || (response.ok && !isJson)) {
+                            remoteSyncAvailable = false;
+                            setSyncStatus('local', 'Saved in this browser (no sync server on this host)');
                         }
                     } catch (e) {
                         console.warn('Cloud state load failed; falling back to local state.', e);
+                        setSyncStatus('error', 'Could not reach sync server. Saved in this browser.');
                     }
 
                     // Seed remote storage from existing local state if the server has no data yet.
                     if (localState && Array.isArray(localState.trades)) {
-                        queueRemoteSave(localState);
+                        if (remoteReachable) queueRemoteSave(localState);
                         return localState;
                     }
 
@@ -3509,6 +3856,10 @@
                     if (dateFromInput) dateFromInput.value = mc.dateFrom || '';
                     if (dateToInput) dateToInput.value = mc.dateTo || '';
                     mainTableColumnProfiles.mobile = Array.isArray(mc.mobileVisibleColumns) ? [...mc.mobileVisibleColumns] : null;
+                    // Untouched legacy mobile default -> upgrade to the card-friendly default.
+                    if (mainTableColumnProfiles.mobile && mainTableColumnProfiles.mobile.join('|') === LEGACY_MOBILE_DEFAULT_COLS.join('|')) {
+                        mainTableColumnProfiles.mobile = [...mobileDefaultDynCols];
+                    }
                     mainTableColumnProfiles.desktop = Array.isArray(mc.desktopVisibleColumns) ? [...mc.desktopVisibleColumns] : null;
                     const chosenColumns = isMobileViewport()
                         ? (mainTableColumnProfiles.mobile || getDefaultVisibleColumns())
@@ -3614,14 +3965,58 @@
             let csvImportState = { holdings: [], transactions: [], plan: null, files: [] };
             const CSV_MONTHS = { JAN:'01', FEB:'02', MAR:'03', APR:'04', MAY:'05', JUN:'06', JUL:'07', AUG:'08', SEP:'09', OCT:'10', NOV:'11', DEC:'12' };
 
-            function openCsvImportModal() { document.getElementById('csvImportOverlay').classList.add('show'); }
+            const CSV_LAST_IMPORT_KEY = 'heresy_last_csv_import';
+            const CSV_BROKER_GUIDE_KEY = 'heresy_csv_broker_guide';
+
+            function showBrokerGuide(broker) {
+                document.querySelectorAll('#csvImportOverlay .broker-tabs .seg-btn').forEach(b => {
+                    const on = b.getAttribute('data-broker') === broker;
+                    b.classList.toggle('active', on);
+                    b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                document.querySelectorAll('#csvImportOverlay .broker-guide-body').forEach(el => {
+                    el.hidden = el.getAttribute('data-broker') !== broker;
+                });
+                try { localStorage.setItem(CSV_BROKER_GUIDE_KEY, broker); } catch (_e) { /* ignore */ }
+            }
+
+            function renderCsvLastImport() {
+                const el = document.getElementById('csvLastImport');
+                if (!el) return;
+                let info = null;
+                try { info = JSON.parse(localStorage.getItem(CSV_LAST_IMPORT_KEY) || 'null'); } catch (_e) { info = null; }
+                if (!info || !info.at) { el.textContent = ''; return; }
+                const when = new Date(info.at);
+                const days = Math.floor((Date.now() - when.getTime()) / 86400000);
+                const ago = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+                const kinds = Array.isArray(info.kinds) && info.kinds.length ? ` · ${info.kinds.join(', ')}` : '';
+                el.textContent = `Last import: ${when.toLocaleDateString()} (${ago})${kinds}`;
+            }
+
+            function openCsvImportModal() {
+                document.getElementById('csvImportOverlay').classList.add('show');
+                let broker = 'fidelity';
+                try { broker = localStorage.getItem(CSV_BROKER_GUIDE_KEY) || 'fidelity'; } catch (_e) { /* ignore */ }
+                showBrokerGuide(broker);
+                renderCsvLastImport();
+            }
             function closeCsvImportModal() {
                 document.getElementById('csvImportOverlay').classList.remove('show');
                 csvImportState = { holdings: [], transactions: [], plan: null, files: [] };
                 document.getElementById('csvFileList').innerHTML = '';
-                document.getElementById('csvReview').innerHTML = '<div style="color:#888; text-align:center; padding: 20px;">No files loaded yet.</div>';
+                document.getElementById('csvReview').innerHTML = '<div class="empty-state">No files loaded yet.</div>';
                 document.getElementById('csvApplyBtn').disabled = true;
                 const inp = document.getElementById('importCsvFile'); if (inp) inp.value = '';
+            }
+
+            // Give each cell of a plain table a data-label from its column header so
+            // the table can collapse into stacked cards on narrow screens.
+            function labelizeTable(table) {
+                if (!table) return;
+                const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    Array.from(tr.children).forEach((td, i) => { if (heads[i]) td.setAttribute('data-label', heads[i]); });
+                });
             }
 
             // RFC4180-ish CSV parser (handles quoted fields with commas/newlines).
@@ -3982,10 +4377,11 @@
 
             function renderCsvFileList() {
                 const el = document.getElementById('csvFileList');
+                const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
                 el.innerHTML = csvImportState.files.map(f => {
                     const ok = !!f.kind;
-                    const detail = ok ? `${f.kind} — ${f.holdings} positions, ${f.transactions} transactions` : 'Unrecognized format (skipped)';
-                    return `<div style="padding:2px 0; color:${ok ? '#2e7d32' : '#c62828'};">${ok ? '✓' : '✗'} <b>${f.name}</b> <span style="color:#666;">${detail}</span></div>`;
+                    const detail = ok ? `${f.kind} — ${f.holdings} positions, ${f.transactions} transactions` : 'Unrecognized format (skipped). Supported: Fidelity and Schwab positions/history exports.';
+                    return `<div class="csv-file ${ok ? 'ok' : 'bad'}"><span class="csv-file-icon">${ok ? '✓' : '✗'}</span><span class="csv-file-name">${esc(f.name)}</span><span class="csv-file-detail">${detail}</span></div>`;
                 }).join('');
             }
 
@@ -4052,7 +4448,7 @@
                     option_type: addAction.holding.option_type || null,
                     account: addAction.account || '',
                     category: document.getElementById('csvDefaultCategory')?.value || 'Asymmetric',
-                    entry_date: addAction.entryDate || new Date().toISOString().slice(0, 10),
+                    entry_date: addAction.entryDate || toDateInputValue(new Date()),
                     exit_date: null,
                     kind: 'position',
                     __planIdx: planIdx
@@ -4096,7 +4492,7 @@
                     option_type: tx.option_type || null,
                     quantity: qty,
                     premium,
-                    entry_date: tx.date || new Date().toISOString().slice(0, 10),
+                    entry_date: tx.date || toDateInputValue(new Date()),
                     exit_date: null,
                     account: tx.account || accountHint || '',
                     source: tx.source || 'CSV'
@@ -4292,7 +4688,7 @@
                 const money = v => isNaN(v) ? '—' : ('$' + Number(v).toFixed(2));
                 const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
                 if (!plan || !plan.length) {
-                    el.innerHTML = '<div style="color:#888;text-align:center;padding:20px;">No positions parsed. Load a <b>Positions</b> CSV (Schwab or Fidelity) to reconcile holdings.</div>';
+                    el.innerHTML = '<div class="empty-state">No positions parsed yet. Add a <b>Positions</b> CSV (Fidelity or Schwab) to reconcile holdings.</div>';
                     document.getElementById('csvApplyBtn').disabled = true; return;
                 }
                 const adds = plan.filter(a => a.kind === 'add');
@@ -4310,7 +4706,7 @@
                 let html = '';
                 html += `<div style="margin:6px 0;color:#333;">${changes.length} proposed change${changes.length === 1 ? '' : 's'} — tick to apply, untick to discard.</div>`;
                 if (changes.length) {
-                    html += `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    html += `<table class="csv-plan-table">
                         <thead><tr>
                             <th style="text-align:left;border-bottom:1px solid #ddd;padding:3px 6px;"><input type="checkbox" id="csvSelectAll" checked title="Select/clear all"></th>
                             ${['Action','Trade','Account','Qty','Entry','Entry date','Category / note'].map(h => `<th style="text-align:left;border-bottom:1px solid #ddd;padding:3px 6px;">${h}</th>`).join('')}
@@ -4386,6 +4782,7 @@
                     html += `<div style="margin:10px 0;color:#2e7d32;">✅ ${totalOk} item${totalOk === 1 ? '' : 's'} already match.</div>`;
                 }
                 el.innerHTML = html;
+                labelizeTable(el.querySelector('table.csv-plan-table'));
                 const selAll = document.getElementById('csvSelectAll');
                 if (selAll) selAll.addEventListener('change', () => {
                     el.querySelectorAll('input.csv-apply:not(:disabled)').forEach(cb => { cb.checked = selAll.checked; });
@@ -4403,7 +4800,7 @@
                     if (a.kind === 'add') {
                         const sel = document.querySelector(`select.csv-cat[data-idx="${cb.dataset.idx}"]`);
                         const cat = sel ? sel.value : document.getElementById('csvDefaultCategory').value;
-                        const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || new Date().toISOString().slice(0, 10), exit_date: null, exit_price: null, entry_goal: null, profit_exit: a.targetProfit ?? null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
+                        const trade = { type: a.holding.type, ticker: a.holding.ticker, quantity: a.quantity, entry_price: csvRound2(a.entryPrice), entry_date: a.entryDate || toDateInputValue(new Date()), exit_date: null, exit_price: null, entry_goal: null, profit_exit: a.targetProfit ?? null, loss_exit: null, sell_order_placed: false, category: cat, account: a.account || '' };
                         if (a.holding.type === 'option') { trade.expiration = a.holding.expiration; trade.strike = Number(a.holding.strike); trade.option_type = a.holding.option_type; }
                         tradesData.push(trade);
                         createdByPlanIdx.set(+cb.dataset.idx, tradesData.length - 1);
@@ -4436,8 +4833,12 @@
                 });
                 saveState(); generateTable();
                 Object.keys(dynamicPanelConfigs).forEach(pid => { const n = parseInt(pid.replace('dynPanel_', '')); if (!isNaN(n) && dynamicPanelConfigs[pid].type === 'table') renderDynamicTable(n); });
+                try {
+                    const kinds = [...new Set(csvImportState.files.map(f => f.kind).filter(Boolean))];
+                    localStorage.setItem(CSV_LAST_IMPORT_KEY, JSON.stringify({ at: new Date().toISOString(), kinds, added, updated, closed, cashflowAdded }));
+                } catch (_e) { /* ignore */ }
                 closeCsvImportModal();
-                alert(`CSV import complete: ${added} added, ${updated} updated, ${closed} closed, ${cashflowAdded} cashflow legs attached.`);
+                showToast(`Import complete: ${added} added, ${updated} updated, ${closed} closed, ${cashflowAdded} cashflow legs attached.`, 'success');
             }
 
             // ===== Summary Section =====
@@ -4611,7 +5012,9 @@
             let dynamicIdCounter = 1;
             const allColumns = ['Entry Date','Trade','Symbol','Category','Account','Qty','Entry','Entry Goal','Current','Profit','Loss','Basis','Value','Gain','Day','Cashflow','Sell Order','Expires','Updated','Age'];
             const defaultDynCols = ['Entry Date','Trade','Category','Qty','Entry','Current','Profit','Basis','Value','Gain','Day','Cashflow','Sell Order','Expires','Updated','Age'];
-            const mobileDefaultDynCols = ['Symbol','Basis','Value','Gain','Day','Cashflow'];
+            // Mobile shows trades as cards, so the full trade name works as the card title.
+            const mobileDefaultDynCols = ['Trade','Category','Qty','Current','Value','Gain','Day','Expires'];
+            const LEGACY_MOBILE_DEFAULT_COLS = ['Symbol','Basis','Value','Gain','Day','Cashflow'];
             let mainTableColumnProfiles = { mobile: null, desktop: null };
 
             function isMobileViewport() {
@@ -4771,7 +5174,9 @@
                 if (id >= dynamicIdCounter) dynamicIdCounter = id + 1;
                 const panelId = `dynPanel_${id}`;
                 const cfg = config || { status: 'open', category: 'all', visibleColumns: getDefaultVisibleColumns() };
-                if (!cfg.visibleColumns) cfg.visibleColumns = getDefaultVisibleColumns();
+                if (!cfg.visibleColumns) cfg.visibleColumns = [...defaultDynCols];
+                // Phones render trades as cards, so they keep their own column profile.
+                const shownCols = isMobileViewport() ? (cfg.mobileVisibleColumns || [...mobileDefaultDynCols]) : cfg.visibleColumns;
                 dynamicPanelConfigs[panelId] = { type: 'table', ...cfg };
                 if (!sectionOrder.includes(panelId)) sectionOrder.push(panelId);
                 if (!sectionNames[panelId]) sectionNames[panelId] = `Table ${id}`;
@@ -4800,7 +5205,10 @@
                                 ${buildCategoryOptions(cfg.category || 'all', true)}
                             </select>
                         </label>
-                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
+                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()">Manage</button>
+                        <label class="sort-control">Sort:
+                            <span class="sort-row"><select class="sort-select" onchange="setSortColumn(this.value)" aria-label="Sort trades by"></select><button type="button" class="sort-dir-btn" onclick="toggleSortDirection()" title="Toggle sort direction" aria-label="Toggle sort direction">↓</button></span>
+                        </label>
                         <div class="panel-col-dropdown">
                             <button onclick="togglePanelColMenu(${id}, event)" style="cursor:pointer;">Columns ▼</button>
                             <div class="panel-col-menu" id="dynColMenu_${id}">
@@ -4813,7 +5221,7 @@
                                         <button type="button" onclick="applyColumnPreset(${id}, 'default')">Default</button>
                                     </div>
                                 </div>
-                                ${allColumns.map(c => `<label><input type="checkbox" data-column="${c}" ${cfg.visibleColumns.includes(c)?'checked':''} onchange="renderDynamicTable(${id})">${c}</label>`).join('')}
+                                ${allColumns.map(c => `<label><input type="checkbox" data-column="${c}" ${shownCols.includes(c)?'checked':''} onchange="renderDynamicTable(${id})">${c}</label>`).join('')}
                                 <button class="col-defaults-btn" onclick="resetColumnsToDefault(${id}, function(){ renderDynamicTable(${id}); })">Defaults</button>
                             </div>
                         </div>
@@ -4839,7 +5247,8 @@
                 const visibleCols = [];
                 colCheckboxes.forEach(cb => { if (cb.checked) visibleCols.push(cb.getAttribute('data-column')); });
 
-                dynamicPanelConfigs[panelId] = { ...(dynamicPanelConfigs[panelId] || {}), type: 'table', status: statusVal, category: categoryVal, visibleColumns: visibleCols };
+                const colsKey = isMobileViewport() ? 'mobileVisibleColumns' : 'visibleColumns';
+                dynamicPanelConfigs[panelId] = { ...(dynamicPanelConfigs[panelId] || {}), type: 'table', status: statusVal, category: categoryVal, [colsKey]: visibleCols };
 
                 let trades = [...tradesData];
                 if (statusVal === 'open') trades = trades.filter(t => !isTradeClosed(t));
@@ -4927,7 +5336,7 @@
                                 ${buildCategoryOptions(cfg.category || 'all', true)}
                             </select>
                         </label>
-                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()" style="padding:4px 8px; font-size:11px;">Manage</button>
+                        <button type="button" class="small-panel-btn" onclick="openCategoryManager()">Manage</button>
                         <label>Status:
                             <select id="dynStatus_${id}" data-role="status" onchange="renderDynamicChart(${id})">
                                 <option value="all" ${cfg.status==='all'?'selected':''}>All</option>
@@ -4941,7 +5350,7 @@
                     <div class="section-content panel-content">
                         <div class="chart-container" style="position:relative;height:400px;background:white;border:1px solid #ddd;border-radius:4px;padding:20px;">
                             <canvas id="dynCanvas_${id}"></canvas>
-                            <div id="dynLoading_${id}" class="chart-loading-overlay" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.75);align-items:center;justify-content:center;font-family:'Courier New',Courier,monospace;font-size:13px;color:#333;z-index:5;">
+                            <div id="dynLoading_${id}" class="chart-loading-overlay" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.75);align-items:center;justify-content:center;font-family:var(--font-ui);font-size:13px;color:#333;z-index:5;">
                                 <div style="display:flex;align-items:center;gap:8px;"><span class="cell-spinner" style="font-size:18px;">↻</span><span>Updating chart...</span></div>
                             </div>
                         </div>
@@ -5062,7 +5471,7 @@
                             scales: { x: { type: 'time', time: { unit: 'day' } }, y: { beginAtZero: false } },
                             plugins: {
                                 legend: { position: 'top' },
-                                title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: 'Courier New' } },
+                                title: { display: true, text: `${catLabel} · ${statLabel} (${period})`, font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif", weight: '600' } },
                                 tooltip: {
                                     mode: 'index',
                                     intersect: false,
@@ -5272,7 +5681,7 @@
                 document.getElementById('tradeType').value = 'position';
                 document.getElementById('tradeTicker').value = '';
                 document.getElementById('tradeTicker').disabled = false;
-                document.getElementById('tradeEntryDate').value = new Date().toISOString().slice(0, 10);
+                document.getElementById('tradeEntryDate').value = toDateInputValue(new Date());
                 document.getElementById('tradeQty').value = '';
                 document.getElementById('tradeEntryPrice').value = '';
                 document.getElementById('tradeProfitExit').value = '';
@@ -5283,10 +5692,26 @@
                 document.getElementById('tradeExitPrice').value = '';
                 document.getElementById('tradeSellOrder').value = 'false';
                 document.getElementById('exitFields').style.display = 'none';
+                populateAccountOptions(document.getElementById('tradeAccount').value || 'Unknown');
                 document.getElementById('tradePriceDisplay').classList.remove('show');
                 document.getElementById('tradePriceDisplay').innerHTML = '';
                 document.getElementById('tickerLookupBtn').classList.add('btn-lookup-empty');
                 document.getElementById('tradeTicker').focus();
+            }
+
+            const DEFAULT_ACCOUNTS = ['Unknown', 'Fidelity', 'Schwab', 'E*TRADE'];
+
+            // Build the account dropdown from defaults plus every account already on a
+            // trade, so editing a CSV-imported trade (e.g. "Individual ...123") keeps it.
+            function populateAccountOptions(selected) {
+                const sel = document.getElementById('tradeAccount');
+                if (!sel) return;
+                const names = [...DEFAULT_ACCOUNTS];
+                tradesData.forEach(t => { if (t.account && !names.includes(t.account)) names.push(t.account); });
+                if (selected && !names.includes(selected)) names.push(selected);
+                const esc = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+                sel.value = selected || 'Unknown';
             }
 
             function showEditTradeModal(tradeIdx) {
@@ -5328,7 +5753,7 @@
                 document.getElementById('tradeExitDate').value = trade.exit_date || '';
                 document.getElementById('tradeExitPrice').value = trade.exit_price || '';
                 document.getElementById('tradeSellOrder').value = trade.sell_order_placed ? 'true' : 'false';
-                document.getElementById('tradeAccount').value = trade.account || 'Unknown';
+                populateAccountOptions(trade.account || 'Unknown');
                 document.getElementById('tradePriceDisplay').classList.remove('show');
                 document.getElementById('tradePriceDisplay').innerHTML = '';
             }
@@ -5503,7 +5928,7 @@
                 document.getElementById('sellPortionQty').value = '';
                 document.getElementById('sellPortionQty').max = trade.quantity;
                 document.getElementById('sellPortionPrice').value = '';
-                document.getElementById('sellPortionDate').value = new Date().toISOString().slice(0, 10);
+                document.getElementById('sellPortionDate').value = toDateInputValue(new Date());
                 document.getElementById('sellPortionOverlay').classList.add('show');
                 document.getElementById('sellPortionQty').focus();
             }
@@ -5597,12 +6022,14 @@
                 const dataState = isClosed ? 'closed' : (isRefreshing || !mi2 ? 'loading' : (mi2.no_data || mi2.fetch_error || !mi2.quote_time ? 'no-data' : ''));
                 const isLoading = dataState === 'loading';
                 let entryColorClass = ''; if (trade.entry_goal) entryColorClass = trade.entry_price < trade.entry_goal ? 'positive' : 'negative';
-                const catCls = trade.category.toLowerCase();
+                const catName = trade.category || 'Uncategorized';
+                const catCls = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                const catHue = [...catName].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
                 return `<tr class="${dataState}" data-market-key='${mk2}' data-trade-idx='${tradeIdx}'>
                             <td data-col='Entry Date' data-sort='${entryDate.getTime()}'${hide('Entry Date')}>${formatDate(trade.entry_date)}</td>
                             <td data-col='Trade' data-sort='${getTradeDisplay(trade)}'${hide('Trade')}>${getTradeDisplay(trade)}</td>
                             <td data-col='Symbol' data-sort='${trade.ticker}'${hide('Symbol')}>${trade.ticker}</td>
-                            <td data-col='Category' data-sort='${trade.category}'${hide('Category')}><span class="category-pill ${catCls}">${trade.category}</span></td>
+                            <td data-col='Category' data-sort='${catName}'${hide('Category')}><span class="category-pill ${catCls}" style="--pill-h:${catHue}">${catName}</span></td>
                             <td data-col='Account' data-sort='${trade.account||"Unknown"}'${hide('Account')}>${trade.account||'Unknown'}</td>
                             <td data-col='Qty' data-sort='${trade.quantity}'${hide('Qty')}>${trade.quantity}</td>
                             <td class='right-align ${entryColorClass}' data-col='Entry' data-sort='${trade.entry_price}'${hide('Entry')}>${formatCurrency(trade.entry_price)}</td>
@@ -5619,7 +6046,7 @@
                             <td class='${getRowClass(trade,'Expires')}' data-col='Expires' data-sort='${trade.type==='option'?new Date(trade.expiration).getTime():-1e12}'${hide('Expires')}>${daysToExp||''}</td>
                             <td data-col='Updated' data-sort='${mi2&&mi2.last_updated?mi2.last_updated:0}'${hide('Updated')}>${lastUp}</td>
                             <td data-col='Age' data-sort='${mi2&&mi2.quote_time?mi2.quote_time:0}'${hide('Age')}>${ageStr}</td>
-                            <td class="action-col"><button class="edit-trade-btn" onclick="showEditTradeModal(${tradeIdx})" title="Edit trade">✎</button><button class="sell-portion-btn" onclick="showSellPortionModal(${tradeIdx})" title="Sell portion">✂</button><button class="refresh-trade-btn" onclick="refreshTrade(${tradeIdx})" title="Refresh ticker">↻</button><button class="delete-trade-btn" onclick="deleteTrade(${tradeIdx})" title="Delete trade">×</button></td>
+                            <td class="action-col"><button class="edit-trade-btn" onclick="showEditTradeModal(${tradeIdx})" title="Edit trade" aria-label="Edit trade">✎</button><button class="sell-portion-btn" onclick="showSellPortionModal(${tradeIdx})" title="Sell portion" aria-label="Sell portion">✂</button><button class="refresh-trade-btn" onclick="refreshTrade(${tradeIdx})" title="Refresh ticker" aria-label="Refresh ticker">↻</button><button class="delete-trade-btn" onclick="deleteTrade(${tradeIdx})" title="Delete trade" aria-label="Delete trade">×</button></td>
                         </tr>`;
             }
 
@@ -5712,6 +6139,7 @@
 
                 document.getElementById('tableContainer').innerHTML = html;
                 updateURLParams();
+                updateDatePresetUI();
                 setupTableSorting(tableId);
                 renderSummary();
                 saveState();
@@ -5838,6 +6266,7 @@
             }
 
             function updateHeadersAndSort(table) {
+                syncSortControls();
                 const headers = table.querySelectorAll('th');
                 
                 // Reset all headers to plain text (preserve resize handles)
@@ -5891,6 +6320,77 @@
                 rows.forEach(row => tbody.appendChild(row));
             }
 
+            // ===== Sort controls (used on mobile where column headers are hidden) =====
+            function syncSortControls() {
+                document.querySelectorAll('.sort-control .sort-select').forEach(sel => {
+                    if (!sel.options.length) {
+                        sel.innerHTML = allColumns.map(c => `<option value="${c}">${c}</option>`).join('');
+                    }
+                    sel.value = currentSortState.column;
+                });
+                document.querySelectorAll('.sort-control .sort-dir-btn').forEach(dirBtn => {
+                    dirBtn.textContent = currentSortState.descending ? '↓' : '↑';
+                    dirBtn.title = currentSortState.descending ? 'Descending (click for ascending)' : 'Ascending (click for descending)';
+                });
+            }
+
+            function resortAllTables() {
+                document.querySelectorAll('table.trade-table').forEach(t => updateHeadersAndSort(t));
+                saveState();
+            }
+
+            function setSortColumn(col) {
+                if (!col) return;
+                currentSortState.column = col;
+                resortAllTables();
+            }
+
+            function toggleSortDirection() {
+                currentSortState.descending = !currentSortState.descending;
+                resortAllTables();
+            }
+
+            // ===== Toasts & modal keyboard handling =====
+            function showToast(message, kind = 'info', timeoutMs = 4500) {
+                let host = document.getElementById('toastHost');
+                if (!host) {
+                    host = document.createElement('div');
+                    host.id = 'toastHost';
+                    host.className = 'toast-host';
+                    host.setAttribute('role', 'status');
+                    host.setAttribute('aria-live', 'polite');
+                    document.body.appendChild(host);
+                }
+                const t = document.createElement('div');
+                t.className = `toast toast-${kind}`;
+                t.textContent = message;
+                host.appendChild(t);
+                requestAnimationFrame(() => t.classList.add('show'));
+                setTimeout(() => {
+                    t.classList.remove('show');
+                    setTimeout(() => t.remove(), 300);
+                }, timeoutMs);
+            }
+
+            const MODAL_CLOSERS = {
+                csvImportOverlay: () => closeCsvImportModal(),
+                categoryManagerOverlay: () => closeCategoryManager(),
+                settingsModalOverlay: () => closeSettingsModal()
+            };
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'Escape') return;
+                // Category manager can sit on top of the CSV modal, so close the last-opened one first.
+                const open = Array.from(document.querySelectorAll('.trade-modal-overlay.show')).filter(el => MODAL_CLOSERS[el.id]);
+                const top = open[open.length - 1];
+                if (top) MODAL_CLOSERS[top.id]();
+            });
+            document.addEventListener('keydown', function(e) {
+                if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.id === 'csvDrop') {
+                    e.preventDefault();
+                    e.target.click();
+                }
+            });
+
             // ===== Access Gate (basic client-side password) =====
             const ACCESS_FLAG_KEY = 'heresy_access_granted';
             const ACCESS_PASSWORD_SHA256 = 'ed88e1c60812f145a65f0f04be2a6e8bab92a57e0d831e17ef58710cd350e77f';
@@ -5939,7 +6439,7 @@
                 overlay.style.justifyContent = 'center';
                 overlay.style.zIndex = '99999';
                 overlay.innerHTML = `
-                    <div style="width: min(92vw, 420px); background: #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); padding: 24px; font-family: 'Courier New', Courier, monospace;">
+                    <div style="width: min(92vw, 420px); background: #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); padding: 24px; font-family: var(--font-ui);">
                         <h2 style="margin: 0 0 10px 0; font-size: 20px;">Portfolio Access</h2>
                         <p style="margin: 0 0 14px 0; font-size: 12px; color: #555; line-height: 1.5;">Enter password to unlock this dashboard on this browser.</p>
                         <form id="accessForm" autocomplete="off">
@@ -6007,6 +6507,8 @@
                         if (f) f.click();
                     }
                     else if (action === 'settings') openSettingsModal();
+                    else if (action === 'importCsv') openCsvImportModal();
+                    else if (action === 'lock') window.heresyLogout();
                     closeMobileMenu();
                 }
 
@@ -6018,34 +6520,45 @@
                     refreshMenu.style.display = refreshMenu.style.display === 'block' ? 'none' : 'block';
                 }
                 
-                // Auto-refresh functionality
+                // Auto-refresh functionality (toggle lives inside the refresh menu)
+                const AUTO_REFRESH_MS = 5000;
                 let autoRefreshInterval = null;
+                let refreshInFlight = false;
+                let queuedRefreshScope = null;
+                function setRefreshScopeItemsDisabled(disabled) {
+                    if (!refreshMenu) return;
+                    refreshMenu.querySelectorAll('.refresh-menu-item').forEach(b => { b.disabled = disabled; });
+                }
+                // Run a refresh that was requested while another one was in progress
+                // (e.g. after saving new API settings during the initial load).
+                function runQueuedRefresh() {
+                    if (!queuedRefreshScope) return;
+                    const next = queuedRefreshScope;
+                    queuedRefreshScope = null;
+                    setTimeout(() => refreshData(next), 0);
+                }
                 const autoRefreshCheckbox = document.createElement('input');
                 autoRefreshCheckbox.type = 'checkbox';
                 autoRefreshCheckbox.id = 'autoRefreshCheckbox';
-                autoRefreshCheckbox.style.margin = '0';
-                
+
                 const autoRefreshLabel = document.createElement('label');
                 autoRefreshLabel.htmlFor = 'autoRefreshCheckbox';
-                autoRefreshLabel.textContent = 'Auto-refresh (5s)';
-                autoRefreshLabel.style.marginLeft = '6px';
-                autoRefreshLabel.style.fontSize = '14px';
-                autoRefreshLabel.style.display = 'inline-flex';
-                autoRefreshLabel.style.alignItems = 'center';
-                
-                // Insert checkbox after the whole refresh button group (so the caret
-                // stays flush against the main button).
-                const refreshGroupEl = document.getElementById('refreshGroup');
-                const refreshAnchor = refreshGroupEl || refreshBtn;
-                refreshAnchor.parentNode.insertBefore(autoRefreshCheckbox, refreshAnchor.nextSibling);
-                refreshAnchor.parentNode.insertBefore(autoRefreshLabel, autoRefreshCheckbox.nextSibling);
+                autoRefreshLabel.className = 'menu-toggle';
+                autoRefreshLabel.appendChild(autoRefreshCheckbox);
+                autoRefreshLabel.appendChild(document.createTextNode(' Auto-refresh every 5s'));
+                autoRefreshLabel.addEventListener('click', e => e.stopPropagation());
+                if (refreshMenu) {
+                    const sep = document.createElement('div');
+                    sep.className = 'menu-sep';
+                    refreshMenu.appendChild(sep);
+                    refreshMenu.appendChild(autoRefreshLabel);
+                }
 
                 // Function to update the last refresh time
                 function updateRefreshTime() {
                     const now = new Date();
-                    const timeString = now.toLocaleTimeString();
-                    const dateString = now.toLocaleDateString();
-                    refreshTime.textContent = `${dateString} at ${timeString}`;
+                    refreshTime.textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    refreshTime.title = now.toLocaleString();
                 }
 
                 // Function to refresh market data from Polygon API.
@@ -6053,13 +6566,20 @@
                 //        'all'         -> every open trade, visible rows prioritized first
                 //        'allHistory'  -> 'all' followed by historical data
                 //        'historyOnly' -> historical data only (no quote re-fetch)
-                async function refreshData(scope) {
+                // opts.auto = true for auto-refresh ticks: those are skipped (not queued) while
+                // busy and leave the menu alone so the auto-refresh toggle stays reachable.
+                async function refreshData(scope, opts = {}) {
                     if (typeof scope !== 'string') scope = 'visible';
+                    if (refreshInFlight) {
+                        if (!opts.auto) queuedRefreshScope = scope;
+                        return;
+                    }
+                    refreshInFlight = true;
                     const scopeLabel = scope === 'visible' ? 'visible rows' : 'all rows';
                     refreshBtn.textContent = scope === 'historyOnly' ? 'Loading history...' : `Refreshing ${scopeLabel}...`;
                     refreshBtn.disabled = true;
-                    refreshMenuBtn.disabled = true;
-                    closeRefreshMenu();
+                    setRefreshScopeItemsDisabled(true);
+                    if (!opts.auto) closeRefreshMenu();
 
                     try {
                         const all = getUniqueTickers();
@@ -6115,15 +6635,17 @@
                         console.error('Error refreshing data:', error);
                     } finally {
                         refreshingKeys.clear();
+                        refreshInFlight = false;
                         refreshBtn.textContent = 'Refresh';
                         refreshBtn.disabled = false;
-                        refreshMenuBtn.disabled = false;
+                        setRefreshScopeItemsDisabled(false);
                         // Regenerate all tables with updated data (fixes totals + sorting)
                         generateTable();
                         Object.keys(dynamicPanelConfigs).forEach(panelId => {
                             const numId = parseInt(panelId.replace('dynPanel_', ''));
                             if (!isNaN(numId) && dynamicPanelConfigs[panelId].type === 'table') renderDynamicTable(numId);
                         });
+                        runQueuedRefresh();
                     }
                 }
 
@@ -6132,16 +6654,21 @@
                 
                 // Auto-refresh toggle function
                 function toggleAutoRefresh() {
-                    if (autoRefreshCheckbox.checked) {
-                        console.log('Auto-refresh enabled: every 5 seconds');
-                        autoRefreshInterval = setInterval(refreshData, 1500); // 5 seconds
-                    } else {
-                        console.log('Auto-refresh disabled');
-                        if (autoRefreshInterval) {
-                            clearInterval(autoRefreshInterval);
-                            autoRefreshInterval = null;
-                        }
+                    if (autoRefreshInterval) {
+                        clearInterval(autoRefreshInterval);
+                        autoRefreshInterval = null;
                     }
+                    if (autoRefreshCheckbox.checked) {
+                        // Skip ticks while the tab is hidden (saves battery/API quota on phones).
+                        autoRefreshInterval = setInterval(() => {
+                            if (!document.hidden) refreshData('visible', { auto: true });
+                        }, AUTO_REFRESH_MS);
+                    }
+                    refreshGroupClassSync();
+                }
+                function refreshGroupClassSync() {
+                    const g = document.getElementById('refreshGroup');
+                    if (g) g.classList.toggle('auto-on', autoRefreshCheckbox.checked);
                 }
 
                 // Initialize on page load - fetch data immediately
@@ -6151,6 +6678,8 @@
                     // Fetch initial market data
                     refreshBtn.textContent = 'Loading...';
                     refreshBtn.disabled = true;
+                    setRefreshScopeItemsDisabled(true);
+                    refreshInFlight = true;
                     
                     try {
                         const tickerGroups = getUniqueTickers();
@@ -6181,8 +6710,11 @@
                         console.error('Error fetching initial data:', error);
                     } finally {
                         refreshingKeys.clear();
+                        refreshInFlight = false;
                         refreshBtn.textContent = 'Refresh';
                         refreshBtn.disabled = false;
+                        setRefreshScopeItemsDisabled(false);
+                        runQueuedRefresh();
                         
                         // Generate table after market data is fetched (or failed)
                         generateTable();
@@ -6270,8 +6802,7 @@
 
                 generateTable();
 
-                // Export / Import handlers
-                document.getElementById('exportBtn').addEventListener('click', exportJSON);
+                // Export / Import handlers (export is triggered via the actions menu)
                 document.getElementById('importFile').addEventListener('change', function(e) {
                     if (e.target.files.length > 0) {
                         importJSON(e.target.files[0]);
@@ -6292,9 +6823,9 @@
                 const csvDrop = document.getElementById('csvDrop');
                 if (csvDrop) {
                     csvDrop.addEventListener('click', () => { openCsvImportModal(); document.getElementById('importCsvFile').click(); });
-                    csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.style.background = '#eef6f8'; });
-                    csvDrop.addEventListener('dragleave', () => { csvDrop.style.background = ''; });
-                    csvDrop.addEventListener('drop', e => { e.preventDefault(); csvDrop.style.background = ''; if (e.dataTransfer.files.length) { openCsvImportModal(); handleCsvFiles(e.dataTransfer.files); } });
+                    csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('dragging'); });
+                    csvDrop.addEventListener('dragleave', () => { csvDrop.classList.remove('dragging'); });
+                    csvDrop.addEventListener('drop', e => { e.preventDefault(); csvDrop.classList.remove('dragging'); if (e.dataTransfer.files.length) { openCsvImportModal(); handleCsvFiles(e.dataTransfer.files); } });
                 }
                 const csvMatch = document.getElementById('csvMatchAccount');
                 if (csvMatch) csvMatch.addEventListener('change', () => { if (csvImportState.plan) buildAndRenderPlan(); });
